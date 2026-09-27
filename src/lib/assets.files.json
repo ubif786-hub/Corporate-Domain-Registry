@@ -1,6 +1,6 @@
 {
   "home-hero": {
-    "src": "https://uktplqgsmsdxrvzq.public.blob.vercel-storage.com/assets/home-hero-d6d41fdb.webp",
+    "src": "/assets/home-hero-d6d41fdb.webp",
     "file": "home-hero.jpg",
     "blobName": "assets/home-hero-d6d41fdb.webp",
     "width": 2400,
@@ -9,7 +9,7 @@
     "bytes": 12746
   },
   "search-backdrop": {
-    "src": "https://uktplqgsmsdxrvzq.public.blob.vercel-storage.com/assets/search-backdrop-05309176.webp",
+    "src": "/assets/search-backdrop-05309176.webp",
     "file": "search-backdrop.jpg",
     "blobName": "assets/search-backdrop-05309176.webp",
     "width": 2400,
