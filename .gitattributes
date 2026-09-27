@@ -1,0 +1,27 @@
+# Deterministic line endings across the fleet.
+#
+# Without this, the mother checked out CRLF (core.autocrlf=true) while the forks sat
+# LF on disk, because fanouts write blob content directly and git does not rewrite an
+# already-matching file. The consequence was a real trap: a working-tree comparison
+# between mother and fork reported drift on EVERY sync-unit file, and a naive `cp`
+# during a fanout would have rewritten line endings across the whole sync unit.
+#
+# eol=lf makes the working tree match the blob everywhere, so parity can be checked
+# with a plain diff and the "LF will be replaced by CRLF" warnings stop.
+* text=auto eol=lf
+
+# Binaries must never be normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+*.webm binary
+*.pdf binary

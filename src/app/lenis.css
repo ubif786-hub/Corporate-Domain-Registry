@@ -1,0 +1,38 @@
+/* ============================================================
+   lenis.css — required runtime styles for the Lenis smooth-scroll
+   primitive (see src/components/motion/SmoothScroll.tsx).
+
+   Lenis toggles the `lenis`, `lenis-smooth`, and `lenis-stopped`
+   classes on <html> while it runs. These rules let it own the scroll:
+   height stays auto so the virtual scroll math is correct, native
+   smooth-scroll is forced off (Lenis animates instead), elements
+   marked [data-lenis-prevent] keep their own native scroll, the body
+   locks when Lenis is stopped, and iframes ignore pointer events mid
+   scroll so the wheel keeps reaching Lenis.
+
+   When smooth scroll is disabled (motion dial = still, or
+   prefers-reduced-motion) the component never initializes Lenis, the
+   classes are never added, and none of these rules apply — the page
+   uses plain native scrolling.
+   ============================================================ */
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}

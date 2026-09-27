@@ -1,0 +1,32 @@
+[
+  {
+    "source": "/lookup",
+    "destination": "/whois",
+    "permanent": true
+  },
+  {
+    "source": "/help",
+    "destination": "/contact",
+    "permanent": true
+  },
+  {
+    "source": "/legal/:path*",
+    "destination": "/tos",
+    "permanent": true
+  },
+  {
+    "source": "/account",
+    "destination": "/login",
+    "permanent": true
+  },
+  {
+    "source": "/r/:code",
+    "destination": "/search",
+    "permanent": false
+  },
+  {
+    "source": "/pricing",
+    "destination": "/search",
+    "permanent": false
+  }
+]

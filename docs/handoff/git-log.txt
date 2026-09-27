@@ -1,0 +1,181 @@
+2026-09-25  ebc0c61  Sync to v6.37.1
+2026-09-25  03f5510  The panel probe kept, and the ledgers after the sync and the v3 export
+2026-09-25  cd2fb55  Sync to v6.37.0
+2026-09-25  a1ad20d  Ledgers: the phone fixes and the panel fix are live, the owner uploads himself, the sync is next
+2026-09-25  ff34143  Location panel: the Site row is gone and the panel is sized by its content
+2026-09-23  59a331b  Local router: the payment routes answer only when the build carries the scripts
+2026-09-23  e93d56b  Decision 13: payment and reselling are backend work, the client's to commission; the export leaves them out
+2026-09-23  e4deb0c  Checkout collects the registrant and hands off to Stripe; /checkout/done thanks and clears the cart
+2026-09-23  776c8c9  Payment scripts on the geo.php pattern: api/checkout.php and api/stripe-webhook.php
+2026-09-23  d53219c  Prices move to src/data/catalog.json, the one file the page and the payment script both read
+2026-09-23  def0627  Decision 12: the checkout, against the OpenSRS Domains API, and this fork's own queue
+2026-09-23  b314e74  Fork guard refreshed on the desktop clone: sync-unit.json stamped from v6.29.2
+2026-09-23  f4e047d  Sync to v6.29.2
+2026-09-23  3eb3af6  Sync to v6.29.1
+2026-09-23  130a0a1  Sync to v6.29.0
+2026-09-23  98152ba  Sheet route: an item keeps its wrapped lines, capped on a word boundary
+2026-09-22  4cd684a  Publish the sheet: /project-manifest.json from PROJECT.md and LAUNCH_CHECKLIST.md
+2026-09-22  cfe3861  HANDOFF: the cPanel upload is the client's hands, not the owner's
+2026-09-22  7a9df8d  Phone probe: the two 21 Sep fixes are on staging and in the zip, not on the client's host
+2026-09-22  c3f016f  Ledgers: the day's decisions and the log, at the wrap of 22 Sep 2026
+2026-09-22  ade3206  The fork guard's sync-unit data names the mother version it came from: 6.28.0
+2026-09-22  706b01f  The fork guard's hook is tracked executable, so it fires on a clone that is not Windows
+2026-09-22  f29b316  Sync to v6.28.0
+2026-09-22  f547109  Sync to v6.27.0
+2026-09-22  788b052  The fork guard: this repo refuses a commit on main or on a sync-unit file
+2026-09-21  9f3026b  cPanel README: the first run on the real host, and what parity does not prove
+2026-09-21  9e8d197  Phone: the four tabs fit, the location panel stays on screen and a tap opens it
+2026-09-21  428155a  Sync to v6.26.0
+2026-09-21  b2fa786  README: the backslash the shell ate, put back
+2026-09-21  ac981bb  The cPanel export for www.corporatedomainregistry.com: the bare-domain redirect and a zip Linux can read
+2026-09-20  6ba4f46  Wrap, 20 Sep 2026: the handoff and the session log
+2026-09-20  e21b06e  The site can ship to the client's cPanel: a static export, one PHP script, a parity probe
+2026-09-19  d660fc0  Corporate Domain Registry: one name, two regions, and a logo that follows the visitor
+2026-09-18  76e888e  The inverted band's hover lift was an arbitrary third constant
+2026-09-18  6ba4e88  The contact page is a list of facts now, and the form is deleted
+2026-09-18  55885bb  Handoff and log: the purchase flow, and the registry that was never the blocker
+2026-09-18  11caded  Any domain a visitor can type now sells, and the checkout exists
+2026-09-18  fd35160  The panel's z-index was a typo of mine, not a design-system fault
+2026-09-18  d53b691  USD and CAD at parity for testing, and the copy stops claiming a conversion
+2026-09-18  9e973c7  The location panel said "no location" to anyone who had used the old picker
+2026-09-18  4c76c0e  Canada sees CAD, and the flag opens the reference's location panel
+2026-09-18  acae7cf  The cart takes the reference's shape: a real table, and a promo toggle
+2026-09-18  6fc73ca  The whois miss claimed an outage that was not happening
+2026-09-18  e7bcf41  Black is the working colour, red is reserved
+2026-09-18  0658ac1  The hero glow was painting 87px up across the route tab strip
+2026-09-18  fc00252  Handoff: the photographs are in and they are stand-ins
+2026-09-18  34f338a  The hero and the search page carry their photographs
+2026-09-18  63721e0  Wrap: the ledgers for the brand pass and the feedback sheet
+2026-09-18  761098a  The hero and the search page can carry a photograph
+2026-09-17  9a77757  Whois explainers move beside the lookup; the search page loses its cart rail
+2026-09-17  ee1d9a6  Three of the client's six feedback items: copyright, region chip, contact form
+2026-09-17  b642372  Correct the brand note the header change made false
+2026-09-17  192c691  The header wears the client's mark
+2026-09-17  59c9aaf  Record that the brand accent and the site accent disagree
+2026-09-17  2e803c7  The logo suite, and the manifest the HQ Brand tab reads
+2026-09-17  e35d6ca  One origin, where there were three and two of them disagreed
+2026-09-17  7696f8a  llms.txt: an orientation file for answer-engine crawlers
+2026-09-17  92f05a0  robots: name the answer-engine crawlers explicitly
+2026-09-17  89d2c73  Sync to v6.25.0
+2026-09-17  a62905d  Retire a client name from the fork-owned scaffold
+2026-09-17  32aed52  Sync to v6.24.2
+2026-09-16  8be649d  Sync to v6.24.1
+2026-09-16  f5dfa57  Favicon: the placeholder tab icon follows the studio's new mark
+2026-09-16  f4b5113  Sync to v6.24.0
+2026-09-15  1c6d308  Sync to v6.23.1
+2026-09-15  bc555ce  Sync to v6.23.0
+2026-09-14  2f51b14  Sync to v6.22.1
+2026-09-14  5e613e4  Sync to v6.22.0
+2026-09-14  d905c30  Sync to v6.21.0
+2026-09-14  b82b07d  Sync to v6.20.0
+2026-09-11  e3adb89  SEO-1: a sitemap and a robots.txt
+2026-09-10  b19feaa  Sync to v6.19.0
+2026-09-10  5b80d90  Sync to v6.18.1
+2026-09-10  16b6710  Sync to v6.18.0
+2026-09-10  dd91d99  Sync to v6.17.0
+2026-09-10  e52d0ae  Sync to v6.16.0
+2026-09-10  0a6225e  Heading caps out: the component carries the measure (v6.15.0 sweep)
+2026-09-10  f008d36  Sync to v6.15.0
+2026-09-10  74ab1ce  Sync to v6.14.0
+2026-09-08  36de3be  Sync to v6.13.1
+2026-09-08  6b48c87  Sync to v6.13.0
+2026-09-08  a7ca078  Sync to v6.12.2
+2026-09-08  f572448  Sync to v6.12.1
+2026-09-08  1aba46f  Favicon: a single 32x32 entry (BRAND-1 sweep)
+2026-09-07  050d520  Sync to v6.12.0
+2026-09-07  2774597  Ledgers: SECT-3 done here, decision 11 carries the rail deviation and the panel-head reading
+2026-09-07  a17402a  SECT-3: the search layout and the address pair compose Row and Column, every band stamped
+2026-09-06  53958b9  PagePanel: the title binds its lede at the heading rung
+2026-09-06  d2d2774  Sync to v6.11.1
+2026-09-06  b7b5a77  Sync to v6.11.0
+2026-09-06  ec60e73  Brand: the header wordmark from the manifest (NAV-BRAND-1)
+2026-09-06  906ea7b  Brand: declared placeholder, the wordmark from the manifest (NAV-BRAND-1)
+2026-09-06  c4533cb  Sync to v6.10.0
+2026-09-06  f88b843  Sync to v6.9.0
+2026-09-06  665ebf7  Sync to v6.8.1
+2026-09-06  1c476de  gitignore: one .env* line (ASSETS-3)
+2026-09-06  882f834  Sections: stamp the censused bands with their library codes (SECT-2)
+2026-09-05  69b5db0  Sync to v6.8.0
+2026-09-05  a7437ff  Assets manifest: slots module, recorded-files split, store listing route
+2026-09-05  db07907  Gate: let every static file through the holding page (images, fonts, robots, the manifests)
+2026-09-05  239cf15  Sync to v6.7.1
+2026-09-05  a174f2a  Sync to v6.7.0
+2026-09-05  eaf0d5e  Holding page: the v6.7.0 sweep, the bare component (its defaults are the fleet message; the action slot is gone)
+2026-09-05  3e96490  404: fork-owned attribute prefix (data-fork-404-links), the cascade guard's rule
+2026-09-05  25bd5a4  REVIEW-CHECKLIST: the review link is the open staging address
+2026-09-05  5985446  CLAUDE.md: staging is the open working site; production holds until launch
+2026-09-05  59e8c6d  Holding page: the fleet message (owner, 5 Sep 2026), explicit until v6.7.0 makes it the default
+2026-09-05  0175c58  Holding page: no button (owner, 5 Sep 2026); action={null} until v6.7.0 removes the slot
+2026-09-05  2d99d06  REVIEW-CHECKLIST: the client review list, committed a day after it was written in chat
+2026-09-05  e636ebe  Gate: let HQ read the two manifests through the holding page
+2026-09-05  58d6fab  Gate: let HQ read the two manifests through the holding page; absolute title on the splash
+2026-09-05  7ebe0a4  CLAUDE.md: the staging model replaces trunk-based on main
+2026-09-05  d16920f  gitignore: .vercel and .env* (written by vercel link)
+2026-09-05  24473c0  Standard pages: the 404, the coming-soon holding page and its gate
+2026-09-05  38277bb  Sync to v6.6.0
+2026-09-04  22cc833  PROJECT.md: record what is owed, and by whom
+2026-09-04  cbb3dff  Home cards: register and renew only, matching the reference
+2026-09-04  af3659e  Terms page, header and search: match the reference on four owner calls
+2026-09-04  c78be38  Align the search to bltz: one field, no service tabs, the result decides
+2026-09-02  d2c399a  Sync to v6.5.6
+2026-09-02  edf0655  Sync to v6.5.5
+2026-09-02  a8656c8  Sync to v6.5.4
+2026-09-02  bb6648a  Sync to v6.5.3
+2026-09-02  87ff20e  Sync to v6.5.2
+2026-09-02  852bbaf  Sync to v6.5.1
+2026-09-02  363c468  Sync to v6.5.0
+2026-09-02  c21ef8d  Sync to v6.4.1
+2026-09-02  1c524be  CLAUDE.md: six master dials (the five-dials line predated the neutral dial)
+2026-09-02  0417723  Sync to v6.4.0
+2026-09-02  899594e  Doc truth-pass: corrections from the 1 Sep 2026 fleet audit
+2026-08-31  3d7a1bf  Wrap 31 Aug 2026: the ledgers catch up with the client being named
+2026-08-31  a4e976f  The client's whois export goes in, without a byte of the personal data
+2026-08-31  308b9c8  The six documents render, and whois has fixtures instead of a PII file
+2026-08-31  9bb7a16  Sync to v6.3.1
+2026-08-31  9c96736  The client is Corporate Domain Registry, and his six documents are in data
+2026-08-31  5a983d9  PROJECT.md: the four decisions closed today, and the CSV contract
+2026-08-31  3405896  A region chip in the header, and the mini-cart rail on search
+2026-08-31  71f0e32  Terms of service becomes an accordion, with the wording in data
+2026-08-31  4cfa142  The header reads Domain registry, and pricing is gone
+2026-08-31  642d2b6  The client's data lands in one file, behind five flags
+2026-08-31  9155fc9  Doc audit: remove what was duplicated, spent or in the wrong repo
+2026-08-31  067eba2  PROJECT.md: this fork's own sheet, and the fanout's generated ledger block
+2026-08-31  1c180ab  Sync to v6.3.0
+2026-08-31  0de81bc  Sync to v6.2.0
+2026-08-30  de31e8d  Sync to v6.0.0
+2026-08-28  808676e  Sync to v5.15.0
+2026-08-27  917d27c  FK-4: the pin claim was five releases stale and buried in a 400-character line
+2026-08-27  7e37eb1  Share card reads SITE.name; log the pass-4 work and the skeptic pass
+2026-08-27  c4cc038  Remove the inherited docs dark guard; apply owner decisions D23 and D25
+2026-08-27  de9ecb2  Sync to v5.14.0
+2026-08-27  5a4a258  Sync to v5.13.0
+2026-08-27  73f2266  Sync to v5.12.0
+2026-08-27  b656775  Sync to v5.11.0
+2026-08-27  09949e6  Sync to v5.10.0
+2026-08-26  e69959a  v5.9.0 fork pass: measure family, checklist favicon line, branch cleanup (D1)
+2026-08-26  99dc8e6  Sync to v5.9.0
+2026-08-25  cf4b577  Sync to v5.8.1
+2026-08-25  6225b38  Sync to v5.8.0
+2026-08-25  a43dc13  Sync to v5.7.0
+2026-08-23  f712ad8  Doc truth pass, 23 Aug 2026: pin wording to the house pattern, fleet section re-synced from the mother, redirect codes stated exactly, scaffold audit-report copies removed
+2026-08-23  564fcfd  Ledgers: the light-theme pin recorded in HANDOFF and the session log
+2026-08-23  5d34529  Pin the light theme (data-theme auto -> light)
+2026-08-23  a258721  Ledgers, 23 Aug: HANDOFF at draft 2, the session log entry, TRIAGE's draft-2 note
+2026-08-23  c5e30bd  Rebuild to the bltz.com register: eight pages, one shell, the Tabs on Search
+2026-08-23  b149bce  Assets pass, 23 Aug 2026: a real /favicon.ico beside icon.svg
+2026-08-23  fc4e12f  Sync to v5.6.0: the typography pass (base code/kbd rule, heading-level props, FilterPanel legend voice, weight literals)
+2026-08-23  63b14cc  Typography pass, 23 Aug 2026: Geist variable face for the medium wordmark, italics on the three text faces, share card at 400 reading Domain services, root metadata from the home route
+2026-08-22  f92fb79  Sync to v5.5.1: the 9 Aug re-verification fixes and the inverted-band link
+2026-08-22  54652f2  Sync to v5.5.0: the colour and spacing audits land
+2026-08-22  4bb9fbf  Spacing pass: 2 fixes from the 22 Aug fleet audit (S-12)
+2026-08-20  976ea88  Sync to v5.4.3: the top bar stops covering its own menu button
+2026-08-19  392281d  Session wrap: handoff at commit 3, log started
+2026-08-19  408cb24  Sync to v5.4.2: accent band text goes back to the pinned neutral
+2026-08-19  2bb24d4  Sync to v5.4.1: the accent band ground goes back to the brand base
+2026-08-19  a0cc93d  CLAUDE.md stops restating the pin
+2026-08-19  7320343  Pricing with no prices, and a transfer journey that says who is waiting
+2026-08-19  49cfa06  Search, and three result states you can actually reach
+2026-08-19  ea9f16d  Sync to v5.4.0: the tertiary ink was inverted, and two bands swallowed their content
+2026-08-19  5005fb2  Triage first, then sixteen routes that can be shown honestly
+2026-08-19  8a03614  Sync to v5.3.0: the atlas gains Accordion
+2026-08-19  b06bf82  chore: fork magentaweb-starter @ v5.2.0
