@@ -11,8 +11,9 @@ import { tokenNumber } from "@/components/internal/styles";
 import { CartPanel } from "../CartPanel";
 import { useCart } from "../CartProvider";
 import { useRegion } from "../RegionProvider";
-import { inRegionCurrency, isAtParity, FX_RATE, FX_RATE_SET } from "@/data/regions";
-import { CHARGE_CURRENCY, money, PRICES_NOTE, SERVICE_LABELS, SITE } from "@/data/site";
+import { inRegionCurrency } from "@/data/regions";
+import { money, SERVICE_LABELS, SITE } from "@/data/site";
+import { SHOP_OPEN } from "@/data/shop";
 import { CheckoutForm } from "./CheckoutForm";
 
 /* Checkout, the reference's anatomy (bltz.com, the client's screenshots of 18 Sep 2026): who you
@@ -24,12 +25,11 @@ import { CheckoutForm } from "./CheckoutForm";
  * page collects a card or charges anything. Payment is backend work outside this agreement and is
  * the client's decision to commission (PROJECT.md decision 13).
  *
- * WITH `export-cpanel.mjs --payments` IT IS STRIPE CHECKOUT, HOSTED (decision 12): the registrant
- * form (OpenSRS will not register a domain without one; D3) posts the cart to api/checkout.php,
- * which prices it and sends the visitor to Stripe's own page. Only that build renders the form
- * (D9: the scripts are PHP on the client's host), and it shows every figure in USD, the charge
- * currency (D2), because the CAD rate is a placeholder and a CAD figure would not be what the
- * statement reads. Proof is local, through cpanel/local-router.php (cpanel/README.md).
+ * WITH `export-cpanel.mjs --payments` IT IS STRIPE CHECKOUT, HOSTED: the registrant form (OpenSRS
+ * will not register a domain without one) posts the cart to api/checkout.php, which checks every
+ * domain again, prices it and sends the visitor to Stripe's own page. The card is held, not
+ * charged, until the domains register. Figures are in the visitor's currency, the one the card is
+ * charged in: CAD in Canada at the same figures as USD (the client's rule), USD everywhere else.
  *
  * THIS ROUTE WAS A PERMANENT REDIRECT TO /cart UNTIL 18 SEP, and the reasoning is worth keeping:
  * payment and fulfilment are coupled, and taking a card for a domain the system cannot register is
@@ -37,7 +37,7 @@ import { CheckoutForm } from "./CheckoutForm";
  * next.config.ts in the same edit that created this page.
  */
 
-const CAN_PAY = process.env.NEXT_PUBLIC_STATIC_EXPORT === "1" && process.env.NEXT_PUBLIC_PAYMENTS === "1";
+const CAN_PAY = SHOP_OPEN;
 
 const stackStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--flow-group)" };
 
@@ -134,9 +134,10 @@ export function CheckoutView() {
     );
   }
 
-  // A payments build shows what the card is charged (USD, D2); the default shows the region's figures.
-  const currency = CAN_PAY ? CHARGE_CURRENCY : region.currency;
-  const shown = (usd: number) => money(CAN_PAY ? usd : inRegionCurrency(usd, region.currency), currency);
+  // What the card is charged in: CAD in Canada, USD everywhere else (api/checkout.php decides the
+  // same way from the same IP database).
+  const currency = region.currency;
+  const shown = (usd: number) => money(inRegionCurrency(usd, currency), currency);
   const total = shown(cart.total);
 
   return (
@@ -185,16 +186,7 @@ export function CheckoutView() {
           </div>
 
           {CAN_PAY ? (
-            <>
-              {region.currency !== CHARGE_CURRENCY ? (
-                <p style={noteStyle}>
-                  Prices elsewhere on this site are shown in {region.currency}. Your card is charged in {CHARGE_CURRENCY}, the
-                  figure above, and your bank converts it.
-                </p>
-              ) : null}
-              <CheckoutForm items={cart.items} total={cart.total} />
-              {PRICES_NOTE ? <p style={noteStyle}>{PRICES_NOTE}</p> : null}
-            </>
+            <CheckoutForm items={cart.items} total={shown(cart.total)} currency={currency} onRemove={cart.remove} />
           ) : (
             <>
               <div style={payBoxStyle}>
@@ -209,16 +201,7 @@ export function CheckoutView() {
                 <Button variant="primary" disabled>Pay {total} {currency}</Button>
               </div>
 
-              <p style={noteStyle}>
-                Nothing is charged and no domain is registered from this preview. {PRICES_NOTE}
-                {region.currency !== "USD" ? (
-                  isAtParity(region.currency) ? (
-                    <> Shown in {region.currency} at parity with USD for testing, not a converted figure.</>
-                  ) : (
-                    <> Shown in {region.currency}, converted from USD at {FX_RATE[region.currency]} as at {FX_RATE_SET}.</>
-                  )
-                ) : null}
-              </p>
+              <p style={noteStyle}>Nothing is charged and no domain is registered from this preview.</p>
             </>
           )}
 

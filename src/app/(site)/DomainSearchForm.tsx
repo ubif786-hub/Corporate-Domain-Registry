@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, FormEvent, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
@@ -17,14 +17,20 @@ import { isPlausibleDomain, normaliseDomain } from "@/data/lookup";
    from the answer: a free domain is a registration, a taken one is a renewal or a transfer.
    Asking first was the divergence. */
 
-const formStyle: CSSProperties = {
-  display: "flex",
-  gap: "var(--space-xs)",
-  alignItems: "flex-end",
-  width: "100%",
-};
-
-const fieldStyle: CSSProperties = { flex: "1 1 16rem", minWidth: 0 };
+/* Field and button in a row; ON A PHONE THEY STACK (Taqi's list, point 7, Sep 2026). In a row at
+   390px the field got about half the width and cut the placeholder off mid-word. Stacked, the
+   field takes the full width and the button sits under it at the same width. The layout lives in
+   a hoisted style block because a media query cannot live in an inline style (the same shape
+   RouteTabs uses). */
+const formCss = `
+[data-ds-search] { display: flex; gap: var(--space-xs); align-items: flex-end; width: 100%; }
+[data-ds-search-field] { flex: 1 1 16rem; min-width: 0; }
+@media (max-width: 639.98px) { /* mobile, below the Row collapse tier */
+  [data-ds-search] { flex-direction: column; align-items: stretch; }
+  [data-ds-search-field] { flex: 0 0 auto; }
+  [data-ds-search] > [data-mw-button] { width: 100%; justify-content: center; }
+}
+`;
 
 export function DomainSearchForm({
   initial = "",
@@ -53,8 +59,9 @@ export function DomainSearchForm({
   }
 
   return (
-    <form onSubmit={submit} style={formStyle} role="search" aria-label="Domain search" data-ds-search="">
-      <div style={fieldStyle}>
+    <form onSubmit={submit} role="search" aria-label="Domain search" data-ds-search="">
+      <style href="domain-services-search-form" precedence="default">{formCss}</style>
+      <div data-ds-search-field="">
         <Input
           id="domain"
           type="text"

@@ -2,7 +2,7 @@
 
 The client hosts this site on his own GoDaddy cPanel (owner, 20 Sep 2026). cPanel serves files and
 PHP and runs no Node, so the site ships as a static export plus a few PHP scripts (the location
-lookup and, since 23 Sep 2026, payment). Nothing in the
+lookup and the shop). Nothing in the
 exported folder talks to Vercel, and the export refuses to finish if any Vercel address survives
 in it.
 
@@ -114,70 +114,74 @@ credit to DB-IP wherever the data is shown. It is not in git.
   noindexed, and the only pages that read the studio's own image store.
 - The two HQ manifests and the analytics beacon: they report to the studio's dashboard.
 
-## Payment: built, OFF, and not the client's yet
+## The shop (`--payments`)
 
-**Nothing below ships by default.** Payment, reseller fulfilment and registrant data are backend
-work outside this front-end agreement (PROJECT.md decision 13, 23 Sep 2026); the owner has put it
-to the client as his decision. An export includes the payment scripts, their two routes and the
-checkout form ONLY with `--payments`; without it the checkout keeps the client's approved
-placeholder and the zip carries no payment script and no payment route (the form's JavaScript
-still sits in the bundle, unreachable: it never renders and has nothing to post to; measured
-23 Sep 2026, 300 files against 304 with the flag). **Never cut a zip for the client with
-`--payments`** until he has commissioned it and fulfilment exists.
-
-What the flag adds, TEST MODE until registration exists. Two scripts on the `geo.php` pattern
-(PROJECT.md decision 12):
+**Only a `--payments` export carries the shop**; without the flag the search says online ordering
+opens soon, the checkout keeps its placeholder, and no shop script or route ships.
 
 | Route | Script | What it does |
 | --- | --- | --- |
-| `POST /api/checkout/` | `api/checkout.php` | The checkout form's registrant and cart in; prices every line from `api/lib/catalog.json` (the same file the page renders from), saves the order as `pending_payment`, answers with a Stripe Checkout URL |
-| `POST /api/stripe-webhook/` | `api/stripe-webhook.php` | Stripe's events in; verifies the signature, marks the order `paid` (or `amount_mismatch`, `payment_failed`, `expired`) and emails CDR |
+| `GET /api/domain-check/?domain=` | `api/domain-check.php` | Asks Tucows whether the name is free; `available`, `taken`, `premium`, `unsupported`, `invalid` or `error`. 30 searches a minute per visitor. |
+| `POST /api/checkout/` | `api/checkout.php` | Registrant and cart in. Checks every domain again at the registry (no cache), prices it from `api/lib/catalog.json` in the visitor's currency (CAD in Canada, USD elsewhere), saves the order, and answers with a Stripe Checkout URL. The card is only authorised (`capture_method=manual`); promotion codes are entered on Stripe's page. |
+| `POST /api/stripe-webhook/` | `api/stripe-webhook.php` | Verifies the signature, reads the PaymentIntent back from Stripe (must be `requires_capture` for the right amount), answers, then registers. |
+| `GET /api/order-status/?order=&t=` | `api/order-status.php` | The done page's view of one order (the token comes back from Stripe in the address). Also picks up a payment whose webhook is late, and keeps registration moving. |
+| `/api/admin/` | `api/admin.php` | Every order, one order in full, CSV export, Tucows balance. Signed in with `admin_token`. |
+| cron | `api/cron.php` | Every 5 minutes: finishes registrations Tucows answers later, retries a failed capture, settles an order on day six before the card hold lapses, and picks up any payment whose webhook never came. |
 
-**The secrets live in ONE file ABOVE `public_html`:** `cdr-config.php` in the cPanel home folder,
-beside `public_html`, never inside it. The template is `cpanel/cdr-config.sample.php`: the Stripe
-secret key, the webhook signing secret, the notice address, the site address and the sender. The
-scripts find it as the folder above the document root, and write each order as a JSON file into
-`cdr-orders/` beside it (created on first use, with a deny-all `.htaccess` in case a host ever
-serves it). Nothing in the zip carries a key; the config file is a separate upload.
+**What happens to a paid order** (`api/lib/fulfil.php`): each domain is registered at Tucows
+(`sw_register`, owner = admin = billing from the form, the reseller's tech contact, lock on,
+auto-renew off, privacy off), then Stripe captures only the registered domains' share of the hold
+and releases the rest; nothing registered means the hold is cancelled and nothing is charged. A
+register whose reply is lost is never sent again blindly: the next pass asks Tucows for its orders
+on that name first. The customer and `notify_email` each get one email with the result. Every step
+is written to the order's history, shown on the admin page.
 
-**A paid order is not a registered domain.** The notice says so and lists what to register in the
-OpenSRS panel. OpenSRS fulfilment is REFACTOR_QUEUE CDR-FULFIL-1, and live keys wait for it.
+**The secrets live in ONE file ABOVE `public_html`:** `cdr-config.php` in the home folder, beside
+`public_html`, never inside it. The template, with every setting explained, is
+`cpanel/cdr-config.sample.php`. Orders are JSON files in `cdr-orders/` beside it (created on first
+use, with a deny-all `.htaccess`). Nothing in the zip carries a key.
 
-**The Stripe dashboard needs one webhook endpoint**, `https://<domain>/api/stripe-webhook/` (the
-rule matches it with or without the slash; unlike `api/geo/` no folder of that name exists, so
-Apache has no folder redirect to run ahead of it), for
-`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-`checkout.session.async_payment_failed` and `checkout.session.expired`. Its signing secret goes in
-`cdr-config.php`.
+**Stripe needs one webhook endpoint**, `https://<domain>/api/stripe-webhook/`, for
+`checkout.session.completed`, `checkout.session.expired` and
+`checkout.session.async_payment_failed`. Its signing secret goes in `cdr-config.php`.
 
-**Prove it locally**, both halves:
+**Tucows live calls** are accepted only from the server IPs on the live account's IP Access Rules.
+The test system (Horizon) has no such list. The host must reach port 55443 outbound; GoDaddy's
+shared hosting does not (tested 28 and 29 Sep 2026).
 
-```
-# the scripts' own refusals and state changes, no Stripe involved (fake key, own signing secret)
-node scripts/probe-payment-php.mjs --orders <cdr-orders dir> --secret-file <file holding a whsec_>
-
-# the real round trip on test keys: the CLI's signing secret into a file, never onto the screen
-stripe listen --api-key <test key> --print-secret > <scratch>/whsec.txt
-node scripts/local-cdr-config.mjs --key-var <NAME in .env.local> --webhook-secret-file <scratch>/whsec.txt
-stripe listen --api-key <test key> --forward-to http://127.0.0.1:8099/api/stripe-webhook/ --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired
-```
-
-`local-cdr-config.mjs` writes `cdr-config.php` at the repo root, which is the folder above `out/`
-exactly as the host's is above `public_html`; it refuses a key that is not a test key, and it and
-`cdr-orders/` are gitignored. Locally the notices go to `cdr-orders/outbox/` rather than a mail
-server.
-
-On the real host, beside the four curls above:
+**The cron job** (cPanel, Cron Jobs, every 5 minutes):
 
 ```
-curl -sI https://<domain>/api/checkout/            # 405: the script answers, and only to POST
-curl -s -X POST https://<domain>/api/stripe-webhook/  # 400 signature: it refuses an unsigned call
-curl -sI https://<domain>/api/lib/cdr.php          # 403, never 200
+php /home/<cPanel user>/public_html/api/cron.php >/dev/null 2>&1
 ```
 
-A `503 not_configured` from either means `cdr-config.php` is missing or in the wrong folder.
+**Prove it locally** with the test keys in the repo's `cdr-config.php` (the folder above `out/`, as
+the host's is above `public_html`; it and `cdr-orders/` are gitignored, and `mail_transport =>
+'file'` writes the emails to `cdr-orders/outbox/`):
 
-## Still to come on this host
+```
+node scripts/export-cpanel.mjs --site https://www.corporatedomainregistry.com --payments
+php -S 127.0.0.1:8099 -t out cpanel/local-router.php
+stripe listen --forward-to http://127.0.0.1:8099/api/stripe-webhook/ --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_failed
+```
 
-OpenSRS (registration, renewal, transfer; REFACTOR_QUEUE CDR-FULFIL-1) and RDAP whois
-(CDR-RDAP-1), on the same pattern: a PHP script under `api/`, its secret in `cdr-config.php`.
+The webhook is optional locally: the done page reads the payment from Stripe itself when no
+webhook arrives. `scripts/probe-payment-php.mjs` predates the shop (it expects the old `paid`
+status) and is out of date.
+
+On the real host, beside the curls above:
+
+```
+curl -s  "https://<domain>/api/domain-check/?domain=example.com"   # {"status":"taken",...}
+curl -sI https://<domain>/api/checkout/                            # 405: answers only to POST
+curl -s -X POST https://<domain>/api/stripe-webhook/               # 400 signature
+curl -sI https://<domain>/api/lib/cdr.php                          # 403, never 200
+```
+
+A `503 not_configured` means `cdr-config.php` is missing, in the wrong folder, or still holds a
+`PASTE` placeholder.
+
+## Still to come
+
+Renewals, transfers, `.ca` and RDAP whois (Stage 2), on the same pattern: a PHP script under
+`api/`, its secret in `cdr-config.php`.

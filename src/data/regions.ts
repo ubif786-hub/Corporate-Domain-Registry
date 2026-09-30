@@ -17,8 +17,7 @@
 // SO THE CONVERSION IS REAL AND STATED. FX_RATE below is a single declared rate with the date it
 // was set, prices are held in USD and converted at render, and the panel says what rate was used.
 //
-// STILL TO SETTLE WITH THE CLIENT (PROJECT.md): if Stripe charges in USD, a CAD figure on the
-// page is an ESTIMATE and the checkout must say so, or the charge has to be presented in CAD.
+// SETTLED 28 SEP 2026: Canada is charged in CAD, at the same figures (see FX_RATE).
 //
 // NOBODY IS BLOCKED. Considered and rejected on the owner's own question, 31 Aug 2026: the site
 // sells gTLDs with no residency requirement anywhere, geo-IP is wrong often enough (VPNs, mobile
@@ -46,27 +45,15 @@ export const REGIONS: Region[] = [
 /**
  * USD to CAD, declared once, with the day it was set.
  *
- * A HARDCODED RATE IS THE HONEST SHAPE HERE, not a shortcut. A live FX feed is a server call on
- * every price render, it is a dependency that can fail mid-demo, and it would quote a mid-market
- * rate the client's bank will not honour anyway. What a buyer needs is a figure that is close and
- * labelled as converted, which this is. When the real price list arrives the client may prefer a
- * SECOND PRICE COLUMN in CAD instead, and that is better still: this constant is the bridge, not
- * the destination.
- *
- * Set 18 Sep 2026. Revisit it whenever the price list is supplied.
+ * DOLLAR FOR DOLLAR IS THE CLIENT'S RULE (Iqbal, 28 Sep 2026): a Canadian pays the same number in
+ * CAD that an American pays in USD ($60 US = $60 CAD). So the rate is 1, the page shows the ladder
+ * in CAD for Canada, and the checkout charges the card in CAD (api/checkout.php). It is a price
+ * list in two currencies, not a conversion, and the page does not describe it as one.
  */
 export const FX_RATE: Record<string, number> = { USD: 1, CAD: 1 };
-export const FX_RATE_SET = "18 Sep 2026";
+export const FX_RATE_SET = "28 Sep 2026";
 
-/**
- * True while a currency is shown at parity, i.e. NOT actually converted.
- *
- * AT 1:1 A CAD LABEL OVER A USD FIGURE IS THE BLTZ BUG, and the page must not claim otherwise.
- * The owner set parity on 18 Sep 2026 for testing, with a real rate or a live feed to follow, so
- * the cart says "at parity for testing" instead of "converted at 1.00", which would be a sentence
- * describing arithmetic that did not happen. The moment FX_RATE.CAD moves off 1 the copy switches
- * itself back to naming the rate.
- */
+/** True while a currency is priced at the same figures as USD (the client's rule for CAD). */
 export const isAtParity = (currency: string): boolean => (FX_RATE[currency] ?? 1) === 1;
 
 /** A USD figure in the region's currency. Prices are stored in USD; this is a render-time step. */

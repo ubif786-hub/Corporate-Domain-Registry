@@ -3,9 +3,8 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Service, Term } from "@/data/site";
 
-// The cart, front end only. Items live in React state and mirror to localStorage so a reload
-// keeps them; nothing is charged and nothing is registered. When Stripe and the registrar arrive
-// (TRIAGE, draft 2) the checkout reads this same shape and this file gains a server round-trip.
+// The cart. Items live in React state and mirror to localStorage so a reload keeps them. The
+// amount is for display only: api/checkout.php prices every line itself from catalog.json.
 
 export interface CartItem {
   id: string;
@@ -36,7 +35,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) setItems(JSON.parse(raw));
+      // Registrations only: the shop sells new domains (Stage 1). A renewal or transfer line a
+      // browser saved before that is dropped rather than refused later at checkout.
+      if (raw) {
+        const saved: unknown = JSON.parse(raw);
+        // localStorage is only readable after hydration; one extra render is the cost.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (Array.isArray(saved)) setItems(saved.filter((i: CartItem) => i && i.service === "register" && typeof i.domain === "string"));
+      }
     } catch {
       /* a private window or a blocked store: start empty */
     }

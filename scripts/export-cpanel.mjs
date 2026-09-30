@@ -5,9 +5,10 @@
 // WHY THIS EXISTS (20 Sep 2026). The client hosts on his own GoDaddy cPanel, which serves files and
 // PHP and runs no Node. So the site ships as a static export plus the few things a server did:
 //   /api/geo      answered by cpanel/api/geo.php from an IP database that ships in the folder
-//   payment       ONLY WITH --payments (off by default, PROJECT.md decision 13):
-//                 cpanel/api/checkout.php and stripe-webhook.php, reading src/data/catalog.json
-//                 (copied in) for prices and cdr-config.php ABOVE public_html for the secrets
+//   the shop      ONLY WITH --payments (off by default): domain search at Tucows, checkout,
+//                 the Stripe webhook, the done page's status, the admin page and the cron job
+//                 (cpanel/api/*.php and lib/), reading src/data/catalog.json (copied in) for prices
+//                 and cdr-config.php ABOVE public_html for the secrets
 //   redirects     written into .htaccess from redirects.json, the same list next.config.ts reads
 //   images        downloaded out of the Vercel image store INTO the folder, every reference rewritten
 // and the folder is REFUSED if any Vercel address survives anywhere in it, because the whole point
@@ -39,7 +40,8 @@ const DEST = argOf("--dest");
 // Payment is OFF unless asked for (PROJECT.md decision 13): it is backend work the client has not
 // commissioned, so a zip for him carries no payment script, no payment route and no form.
 const PAYMENTS = args.includes("--payments");
-const PAYMENT_FILES = ["checkout.php", "stripe-webhook.php", join("lib", "cdr.php")];
+const SHOP_ROUTES = ["domain-check", "checkout", "stripe-webhook", "order-status", "admin", "cron"];
+const PAYMENT_FILES = [...SHOP_ROUTES.map((r) => `${r}.php`), join("lib", "cdr.php"), join("lib", "opensrs.php"), join("lib", "fulfil.php")];
 const OUT = join(ROOT, "out");
 const ASIDE = join(ROOT, ".export-aside");
 
@@ -83,7 +85,7 @@ try {
   const env = { ...process.env, STATIC_EXPORT: "1", NEXT_PUBLIC_STATIC_EXPORT: "1", NEXT_PUBLIC_SITE_URL: SITE };
   if (PAYMENTS) env.NEXT_PUBLIC_PAYMENTS = "1"; else delete env.NEXT_PUBLIC_PAYMENTS;
   delete env.COMING_SOON;
-  console.log(PAYMENTS ? "payments: ON (checkout form, api/checkout.php, api/stripe-webhook.php)" : "payments: off (the checkout keeps its placeholder; no payment script ships)");
+  console.log(PAYMENTS ? "shop: ON (live search, checkout, webhook, order status, admin, cron)" : "shop: off (search and checkout keep their placeholders; no shop script ships)");
   delete env.VERCEL_PROJECT_PRODUCTION_URL;
   console.log("building the static export for", SITE, "...");
   try { log = execSync("npx next build", { cwd: ROOT, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
@@ -211,9 +213,8 @@ ${(() => {
 # the location lookup the header chip asks for
 RewriteRule ^api/geo/?$ api/geo.php [L]
 ${PAYMENTS ? `
-# payment: the checkout form posts here, and Stripe delivers its webhook here
-RewriteRule ^api/checkout/?$ api/checkout.php [L]
-RewriteRule ^api/stripe-webhook/?$ api/stripe-webhook.php [L]
+# the shop: search, checkout, Stripe's webhook, the done page's status, the admin page, the cron job
+${SHOP_ROUTES.map((r) => `RewriteRule ^api/${r}/?$ api/${r}.php [L,QSA]`).join("\n")}
 ` : ""}
 
 # nothing under api/ but the scripts themselves is for the public: not the database, not the library

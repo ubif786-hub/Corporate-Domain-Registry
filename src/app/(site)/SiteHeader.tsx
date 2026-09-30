@@ -4,7 +4,7 @@ import { CSSProperties } from "react";
 import Link from "next/link";
 import { BrandWordmark } from "@/components/BrandWordmark";
 import { BRAND } from "@/lib/assets";
-import { CdrLockup, CdrSymbol } from "./CdrLogo";
+import { CdrLockup } from "./CdrLogo";
 import { ShoppingCart } from "@carbon/icons-react";
 import { Container } from "@/components/Container";
 import { RouteTabs } from "./RouteTabs";
@@ -56,19 +56,12 @@ const homeLinkStyle: CSSProperties = {
   maxWidth: "var(--brand-lockup-width)",
 };
 
-// Full lockup on a laptop, the leaf alone on a phone. The mother made this a DESIGN-SYSTEM rule
-// rather than a per-fork fix (owner, 17 Sep 2026) and this header is fork-owned, so it has to
-// honour the rule by hand. A media query cannot live in an inline style, so the swap is a hoisted
-// style block, the same shape RouteTabs already uses in this fork.
+// THE FULL LOCKUP AT EVERY WIDTH (client, Sep 2026). Phones used to swap it for the flag or leaf
+// alone, the design system's rule; the client wants the name beside the mark on a phone too, as
+// bltz.com shows it. The utility row wraps under the logo when the two do not fit on one line.
 const logoCss = `
 [data-ds-logo-full] { display: inline-flex; align-items: center; min-width: 0; }
 [data-ds-logo-full] > svg { height: var(--brand-lockup-height); width: auto; max-width: var(--brand-lockup-width); }
-[data-ds-logo-symbol] { display: none; align-items: center; }
-[data-ds-logo-symbol] > svg { height: var(--brand-symbol-size); width: auto; }
-@media (max-width: 767.98px) { /* --mw-bp-tablet */
-  [data-ds-logo-full] { display: none; }
-  [data-ds-logo-symbol] { display: inline-flex; }
-}
 `;
 
 const utilityRowStyle: CSSProperties = {
@@ -136,9 +129,6 @@ export function SiteHeader() {
             <BrandWordmark {...BRAND}>
               <span data-ds-logo-full="" aria-hidden="true">
                 <CdrLockup region={code} style={ready ? undefined : logoPendingStyle} />
-              </span>
-              <span data-ds-logo-symbol="" aria-hidden="true">
-                <CdrSymbol region={code} style={ready ? undefined : logoPendingStyle} />
               </span>
             </BrandWordmark>
           </Link>

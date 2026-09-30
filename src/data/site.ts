@@ -34,10 +34,10 @@ export const SUPPLIED = {
   /** The business name. Supplied 31 Aug 2026 by the client's six legal documents. The MARK is
    *  still outstanding: the fork wears the studio icon (assets audit AS-6). */
   name: true,
-  /** The extension list and the price table: EXTENSIONS. */
-  prices: false,
-  /** The trading currency. USD is an assumption, not an instruction. */
-  currency: false,
+  /** The price ladder. Confirmed by the client 27 Sep 2026: keep the current ladder. */
+  prices: true,
+  /** USD, and CAD for Canada at the same figures (client, 28 Sep 2026: "dollar for dollar"). */
+  currency: true,
   /** Email, phone, hours, postal address. */
   contact: false,
   /** The terms of service wording. */

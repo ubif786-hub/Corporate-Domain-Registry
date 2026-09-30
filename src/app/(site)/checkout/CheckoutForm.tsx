@@ -11,7 +11,6 @@ import { Row } from "@/components/Row";
 import { Select } from "@/components/Select";
 import { TextField } from "@/components/TextField";
 import { AGREEMENT } from "@/data/legal/agreement";
-import { CHARGE_CURRENCY, money } from "@/data/site";
 import catalog from "@/data/catalog.json";
 import type { CartItem } from "../CartProvider";
 
@@ -23,7 +22,9 @@ import type { CartItem } from "../CartProvider";
  * to admin and billing and CDR's own tech contact is used, so the visitor fills one set.
  *
  * THE BROWSER SENDS NO PRICES. The server (api/checkout.php) prices each line from catalog.json and
- * charges that, so a tampered cart can change nothing but which domains are ordered.
+ * charges that, so a tampered cart can change nothing but which domains are ordered. It also asks
+ * the registry once more; a domain that went while it sat in the cart comes back as a line error,
+ * shown here with a button that takes it out of the cart.
  */
 
 type Fields = Record<string, string>;
@@ -31,10 +32,22 @@ type Fields = Record<string, string>;
 const stackStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--flow-group)" };
 const noteStyle: CSSProperties = { margin: 0, fontSize: "var(--type-sm)", lineHeight: "var(--leading-normal)", color: "var(--text-positive-tertiary)" };
 const linkStyle: CSSProperties = { color: "var(--text-positive-link)" };
+const lineProblemStyle: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-xs)" };
 
 const NAMES = typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
 
-export function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
+export function CheckoutForm({
+  items,
+  total,
+  currency,
+  onRemove,
+}: {
+  items: CartItem[];
+  /** The order total, formatted in the charge currency. */
+  total: string;
+  currency: string;
+  onRemove: (id: string) => void;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [agree, setAgree] = useState(false);
   const [country, setCountry] = useState("");
@@ -50,7 +63,6 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
     return ["CA", "US", ...rest].map((c) => ({ value: c, label: name(c) }));
   }, []);
 
-  const transfers = items.filter((i) => i.service !== "register");
   const stateRequired = country === "CA" || country === "US";
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -61,7 +73,7 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
     const registrant: Fields = {};
     for (const k of ["first_name", "last_name", "org_name", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country"]) registrant[k] = value(k);
     const body = {
-      items: items.map((i) => ({ domain: i.domain, service: i.service, term: i.term, authCode: value(`auth_${i.id}`) })),
+      items: items.map((i) => ({ domain: i.domain, term: i.term })),
       registrant,
       agree,
     };
@@ -85,8 +97,8 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
   }
 
   const lineProblems = items
-    .map((item, i) => (lineErrors[String(i)] ? `${item.domain}: ${lineErrors[String(i)]}` : null))
-    .filter((x): x is string => Boolean(x));
+    .map((item, i) => (lineErrors[String(i)] ? { item, message: lineErrors[String(i)] } : null))
+    .filter((x): x is { item: CartItem; message: string } => Boolean(x));
 
   return (
     <form ref={formRef} onSubmit={submit} style={stackStyle} aria-busy={busy}>
@@ -94,7 +106,28 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
         <CalloutCard
           tone="danger"
           title={problem}
-          body={lineProblems.length ? <>{lineProblems.map((p) => <span key={p} style={{ display: "block" }}>{p}</span>)}</> : undefined}
+          body={
+            lineProblems.length ? (
+              <>
+                {lineProblems.map(({ item, message }) => (
+                  <span key={item.id} style={lineProblemStyle}>
+                    <span><strong>{item.domain}</strong>: {message}</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        onRemove(item.id);
+                        setLineErrors({});
+                        setProblem(null);
+                      }}
+                    >
+                      Remove from cart
+                    </Button>
+                  </span>
+                ))}
+              </>
+            ) : undefined
+          }
         />
       ) : null}
 
@@ -145,24 +178,6 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
         </Row>
       </FormGroup>
 
-      {transfers.length ? (
-        <FormGroup
-          legend="Transfer codes"
-          description="Only for a domain held with another provider. The code comes from that provider; without it, the current owner is emailed to approve the move."
-        >
-          {transfers.map((t) => (
-            <TextField
-              key={t.id}
-              id={`co-auth-${t.id}`}
-              name={`auth_${t.id}`}
-              label={`Transfer code for ${t.domain}`}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          ))}
-        </FormGroup>
-      ) : null}
-
       <Checkbox
         id="co-agree"
         checked={agree}
@@ -178,12 +193,14 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
 
       <div>
         <Button type="submit" variant="primary" aria-disabled={busy || undefined}>
-          {busy ? "Opening secure payment…" : `Continue to payment, ${money(total, CHARGE_CURRENCY)} ${CHARGE_CURRENCY}`}
+          {busy ? "Checking your domains…" : `Continue to payment, ${total} ${currency}`}
         </Button>
       </div>
 
       <p style={noteStyle}>
-        You pay on Stripe&rsquo;s secure page, in {CHARGE_CURRENCY}; this site never sees your card.
+        You pay on Stripe&rsquo;s secure page, in {currency}; this site never sees your card. Your card is
+        only charged once your domains are registered, and only for the ones that register. Have a promo
+        code? Enter it on the payment page.
       </p>
     </form>
   );

@@ -2,9 +2,9 @@
 /* LOCAL TESTING ONLY. Never uploaded: the export script copies cpanel/api and nothing else.
  *
  * PHP's built-in server does not read .htaccess, so this router says the same things to it that
- * the generated .htaccess says to Apache: /api/geo, /api/checkout and /api/stripe-webhook go to
- * their scripts (which find cdr-config.php one folder above out/, the repo root), the database and the
- * library are forbidden, the redirects come from redirects.json, a folder serves its index.html,
+ * the generated .htaccess says to Apache: /api/geo and the shop's endpoints go to their scripts
+ * (which find cdr-config.php one folder above out/, the repo root), the database and the library
+ * are forbidden, the redirects come from redirects.json, a folder serves its index.html,
  * a path with no trailing slash is redirected to the one with (Apache's DirectorySlash), and a
  * miss serves 404.html with a 404.
  *
@@ -19,8 +19,7 @@ $query = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
 
 if (preg_match('#^/api/geo/?$#', $uri)) { require $root . '/api/geo.php'; return true; }
 // Only in a --payments export, as the generated .htaccess only has these rules then; otherwise 404.
-if (preg_match('#^/api/checkout/?$#', $uri) && is_file($root . '/api/checkout.php')) { require $root . '/api/checkout.php'; return true; }
-if (preg_match('#^/api/stripe-webhook/?$#', $uri) && is_file($root . '/api/stripe-webhook.php')) { require $root . '/api/stripe-webhook.php'; return true; }
+if (preg_match('#^/api/(domain-check|checkout|stripe-webhook|order-status|admin|cron)/?$#', $uri, $m) && is_file($root . '/api/' . $m[1] . '.php')) { require $root . '/api/' . $m[1] . '.php'; return true; }
 if (preg_match('#^/api/(geo|lib)/#', $uri)) { http_response_code(403); echo 'Forbidden'; return true; }
 
 $redirects = json_decode(file_get_contents(__DIR__ . '/../redirects.json'), true);

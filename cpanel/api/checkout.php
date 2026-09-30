@@ -1,73 +1,66 @@
 <?php
 /* POST /api/checkout/ — the registrant form and the cart in, a Stripe Checkout URL out.
  *
- * The page sends JSON: { items: [{domain, service, term, authCode?}], registrant: {...}, agree }.
+ * The page sends JSON: { items: [{domain, term}], registrant: {...}, agree }.
+ *
  * NOTHING THE BROWSER SAYS ABOUT MONEY IS BELIEVED. Every line is priced here from catalog.json
- * (the same file the page renders its prices from), and the amount Stripe charges is the amount
- * computed here. The order is written above the document root as pending_payment BEFORE Stripe is
- * asked, so the webhook always has a record to mark paid.
+ * (the same file the page renders its prices from), in the visitor's currency: CAD in Canada, USD
+ * everywhere else, decided from the same IP database as the header chip.
  *
- * STRIPE CHECKOUT, HOSTED: the card never touches this site. The customer is sent to Stripe's own
- * page and comes back to /checkout/done/. Whether they paid is decided by the webhook
- * (stripe-webhook.php), never by the return visit, which anyone can type.
+ * EVERY DOMAIN IS CHECKED AGAIN, straight at the registry (no cache), before Stripe is asked. A
+ * name that went while it sat in the cart is refused here, before any card is touched.
  *
- * NO REGISTRATION HAPPENS HERE YET. Payment and fulfilment are coupled (PROJECT.md), so this runs
- * on TEST keys only until OpenSRS is wired in (REFACTOR_QUEUE CDR-FULFIL-1).
+ * THE CARD IS ONLY AUTHORISED (capture_method=manual). stripe-webhook.php hands the order to the
+ * fulfilment (lib/fulfil.php), which registers each domain and then charges only for what
+ * registered, releasing the rest of the hold. Promotion codes are entered on Stripe's page.
  */
 require __DIR__ . '/lib/cdr.php';
+require __DIR__ . '/lib/opensrs.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Allow: POST');
     cdr_fail(405, 'method', 'Use POST.');
 }
+$config = cdr_require_config(array('stripe_secret_key', 'site_url', 'notify_email', 'opensrs_username', 'opensrs_api_key'));
+// Test with test, live with live. Real domains for test money, or real money for test domains,
+// is a misconfiguration, and the shop stays shut until it is fixed.
+if (($config['opensrs_env'] === 'live') === cdr_test_mode()) cdr_fail(503, 'not_configured', 'The shop is not fully configured yet.');
 $raw = file_get_contents('php://input', false, null, 0, 65536);
 $in = json_decode($raw, true);
 if (!is_array($in)) cdr_fail(400, 'bad_request', 'The request could not be read.');
+if (cdr_rate_limited('checkout', 20, 600)) cdr_fail(429, 'too_many', 'Too many attempts. Wait a few minutes and try again.');
 
-$config = cdr_config();
 $catalog = cdr_catalog();
+$currency = cdr_visitor_currency();
 $errors = array();
 
 /* ---------- the cart ---------- */
 $items = isset($in['items']) && is_array($in['items']) ? array_values($in['items']) : array();
 if (!$items) cdr_fail(422, 'empty_cart', 'Your cart is empty.');
-if (count($items) > 20) cdr_fail(422, 'cart_too_large', 'Up to 20 domains per order. Split the rest into a second order.');
+if (count($items) > 10) cdr_fail(422, 'cart_too_large', 'Up to 10 domains per order. Please place a second order for the rest.');
 
-$labels = array('register' => 'Domain Registration', 'renew' => 'Domain Renewal / Transfer', 'transfer' => 'Domain Renewal / Transfer');
 $lines = array();
 $lineErrors = array();
+$lineIndex = array(); // cart position of each line, for error messages
 $seen = array();
 foreach ($items as $i => $item) {
-    $domain = isset($item['domain']) && is_string($item['domain']) ? strtolower(trim($item['domain'])) : '';
-    $service = isset($item['service']) ? $item['service'] : '';
+    $domain = cdr_normalise_domain(isset($item['domain']) && is_string($item['domain']) ? $item['domain'] : '');
     $term = isset($item['term']) ? (int) $item['term'] : 0;
-    // A registrable name: labels of letters, digits and inner hyphens (punycode included), a TLD of letters.
-    if (strlen($domain) > 253 || !preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/', $domain)) {
-        $lineErrors[$i] = 'This is not a domain name we can register.';
-        continue;
-    }
-    if (!isset($labels[$service])) { $lineErrors[$i] = 'Unknown service.'; continue; }
-    if (!in_array($term, $catalog['terms'], true) || !isset($catalog['ladder'][(string) $term])) { $lineErrors[$i] = 'Unknown term.'; continue; }
-    $tld = substr($domain, strrpos($domain, '.') + 1);
-    if (in_array($tld, $catalog['notSoldOnline'], true)) {
-        $lineErrors[$i] = '.' . $tld . ' needs registry details this checkout does not collect. Contact support to order it.';
-        continue;
-    }
-    $key = $service . ':' . $domain;
-    if (isset($seen[$key])) continue;
-    $seen[$key] = true;
-    $authCode = '';
-    if ($service !== 'register' && isset($item['authCode']) && is_string($item['authCode'])) {
-        $authCode = trim($item['authCode']);
-        if (strlen($authCode) > 64 || preg_match('/[\x00-\x1F\x7F]/', $authCode)) { $lineErrors[$i] = 'The transfer code is not valid.'; continue; }
-    }
+    if (!cdr_valid_domain($domain)) { $lineErrors[$i] = 'This is not a domain name we can register.'; continue; }
+    if (!cdr_sellable($domain)) { $lineErrors[$i] = '.' . cdr_tld($domain) . ' domains are not sold online. Contact us to order one.'; continue; }
+    $amount = cdr_price_cents($term, $currency);
+    if (!in_array($term, $catalog['terms'], true) || $amount === null) { $lineErrors[$i] = 'Choose a registration period.'; continue; }
+    if (isset($seen[$domain])) continue;
+    $seen[$domain] = true;
+    $lineIndex[] = $i;
     $lines[] = array(
         'domain' => $domain,
-        'service' => $service,
-        'label' => $labels[$service],
+        'service' => 'register',
+        'label' => 'Domain registration',
         'term' => $term,
-        'amount_cents' => (int) round($catalog['ladder'][(string) $term] * 100),
-        'auth_code' => $authCode,
+        'amount_cents' => $amount,
+        'state' => 'new',
+        'attempts' => 0,
     );
 }
 
@@ -96,9 +89,13 @@ $registrant = array(
 );
 if ($registrant['email'] !== '' && !filter_var($registrant['email'], FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Enter a valid email address.';
 if ($registrant['phone'] !== '') {
-    // Stored as E.164. OpenSRS wants +CC.NNNN, which needs the calling code split out; that
-    // conversion belongs to fulfilment (REFACTOR_QUEUE CDR-FULFIL-1).
+    // Stored as E.164; lib/opensrs.php turns it into OpenSRS's +CC.NUMBER at registration.
     $digits = preg_replace('/[\s().-]/', '', $registrant['phone']);
+    // North American numbers typed without the plus: 4165550123 or 14165550123.
+    if (in_array($registrant['country'], array('CA', 'US'), true)) {
+        if (preg_match('/^\d{10}$/', $digits)) $digits = '+1' . $digits;
+        elseif (preg_match('/^1\d{10}$/', $digits)) $digits = '+' . $digits;
+    }
     if (!preg_match('/^\+[1-9]\d{6,14}$/', $digits)) $errors['phone'] = 'Include the country code, for example +1 416 555 0123.';
     else $registrant['phone'] = $digits;
 }
@@ -111,35 +108,58 @@ if (empty($in['agree'])) $errors['agree'] = 'Accept the agreement to continue.';
 if ($errors || $lineErrors) cdr_fail(422, 'invalid', 'Some details need attention.', array('fields' => (object) $errors, 'lines' => (object) $lineErrors));
 if (!$lines) cdr_fail(422, 'empty_cart', 'Your cart is empty.');
 
+/* ---------- the final availability check, at the registry ---------- */
+foreach ($lines as $n => $l) {
+    $look = cdr_opensrs_lookup($l['domain'], true);
+    if ($look['status'] === 'error') {
+        cdr_fail(503, 'registry_unavailable', 'We could not confirm availability with the registry just now. Nothing was charged; please try again in a moment.');
+    }
+    if ($look['status'] !== 'available') $lineErrors[$lineIndex[$n]] = 'This domain is no longer available. Remove it from your cart to continue.';
+}
+if ($lineErrors) cdr_fail(422, 'unavailable', 'A domain in your cart is no longer available.', array('fields' => (object) array(), 'lines' => (object) $lineErrors));
+
 /* ---------- the order, then the Stripe session ---------- */
-$total = 0;
-foreach ($lines as $l) $total += $l['amount_cents'];
+$subtotal = 0;
+foreach ($lines as $l) $subtotal += $l['amount_cents'];
 $id = cdr_new_order_id();
 $now = gmdate('c');
+$ip = cdr_visitor_ip();
 $order = array(
     'id' => $id,
     'status' => 'pending_payment',
     'test_mode' => cdr_test_mode(),
+    'opensrs_env' => $config['opensrs_env'],
     'created_at' => $now,
     'updated_at' => $now,
-    'currency' => strtolower($catalog['chargeCurrency']),
-    'total_cents' => $total,
+    'currency' => $currency,
+    'subtotal_cents' => $subtotal,
     'lines' => $lines,
     'registrant' => $registrant,
-    'registrant_ip' => isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '',
+    // Kept for the registrar agreement (OpenSRS MSA 3.9): who ordered, from where, and when.
+    'registrant_ip' => $ip ? $ip : '',
+    'visitor_country' => cdr_visitor_country(),
+    'agreement' => array('accepted_at' => $now, 'document' => 'Domain Registration and Management Agreement', 'url' => $config['site_url'] . '/tos/'),
     'stripe' => array(),
     'events' => array(),
+    'log' => array(),
 );
+cdr_note($order, 'Order created, ' . cdr_money($subtotal, $currency) . '; all domains confirmed available.');
 cdr_write_order($order);
 
 $params = array(
     'mode' => 'payment',
+    'payment_method_types' => array('card'),
     'client_reference_id' => $id,
     'customer_email' => $registrant['email'],
-    'success_url' => $config['site_url'] . '/checkout/done/?order=' . $id,
+    'success_url' => $config['site_url'] . '/checkout/done/?order=' . $id . '&t=' . cdr_order_token($id),
     'cancel_url' => $config['site_url'] . '/checkout/',
+    // Short, so the availability check above is still fresh when the customer pays. Stripe's
+    // minimum is 30 minutes; a little more so a clock a few minutes out cannot fall under it.
+    'expires_at' => time() + 40 * 60,
+    'allow_promotion_codes' => 'true',
     'metadata' => array('order_id' => $id),
     'payment_intent_data' => array(
+        'capture_method' => 'manual',
         'metadata' => array('order_id' => $id),
         'description' => 'Corporate Domain Registry order ' . $id,
     ),
@@ -149,9 +169,9 @@ foreach ($lines as $l) {
     $params['line_items'][] = array(
         'quantity' => 1,
         'price_data' => array(
-            'currency' => $order['currency'],
+            'currency' => $currency,
             'unit_amount' => $l['amount_cents'],
-            'product_data' => array('name' => $l['label'] . ', ' . $l['term'] . ($l['term'] === 1 ? ' year' : ' years') . ', ' . $l['domain']),
+            'product_data' => array('name' => $l['domain'] . ', registration for ' . $l['term'] . ($l['term'] === 1 ? ' year' : ' years')),
         ),
     );
 }
@@ -160,8 +180,8 @@ list($status, $session) = cdr_stripe('POST', '/checkout/sessions', $params, 'cdr
 if ($status !== 200 || empty($session['url'])) {
     cdr_update_order($id, function ($o) use ($status, $session) {
         $o['status'] = 'stripe_error';
-        $o['updated_at'] = gmdate('c');
         $o['stripe']['error'] = array('http' => $status, 'type' => isset($session['error']['type']) ? $session['error']['type'] : null, 'message' => isset($session['error']['message']) ? $session['error']['message'] : null);
+        cdr_note($o, 'Stripe refused the session: ' . (isset($session['error']['message']) ? $session['error']['message'] : 'HTTP ' . $status));
         return $o;
     });
     cdr_fail(502, 'payment_unavailable', 'Payment could not be started. Nothing was charged; try again in a moment.');
@@ -170,7 +190,6 @@ if ($status !== 200 || empty($session['url'])) {
 cdr_update_order($id, function ($o) use ($session) {
     $o['stripe']['session_id'] = $session['id'];
     $o['stripe']['expires_at'] = isset($session['expires_at']) ? gmdate('c', $session['expires_at']) : null;
-    $o['updated_at'] = gmdate('c');
     return $o;
 });
 

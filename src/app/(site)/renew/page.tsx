@@ -13,7 +13,7 @@ export default function RenewPage() {
   return (
     <SearchRoute
       title="Renew a domain"
-      lede="Enter a domain you already hold to extend it before it expires."
+      lede="Renewals are arranged by our team for now. Search your domain to check it, then email us to renew it."
     />
   );
 }

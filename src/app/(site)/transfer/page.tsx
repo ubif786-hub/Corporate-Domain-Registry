@@ -13,7 +13,7 @@ export default function TransferPage() {
   return (
     <SearchRoute
       title="Transfer a domain"
-      lede="Enter a domain you hold at another registrar. A transfer brings it here and adds a year to its term."
+      lede="Transfers are arranged by our team for now. Search your domain to check it, then email us to move it here."
     />
   );
 }

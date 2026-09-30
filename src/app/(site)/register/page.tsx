@@ -13,7 +13,7 @@ export default function RegisterPage() {
   return (
     <SearchRoute
       title="Register a domain"
-      lede="Enter the domain you want. If it is free you can register it here for one to five years."
+      lede="Enter the domain you want. If it is free you can register it here for one to ten years."
     />
   );
 }

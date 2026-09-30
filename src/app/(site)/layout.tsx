@@ -3,8 +3,6 @@ import { CartProvider } from "./CartProvider";
 import { RegionProvider } from "./RegionProvider";
 import { SiteHeader } from "./SiteHeader";
 import { SiteFooter } from "./SiteFooter";
-import { PageLoader } from "@/components/motion/PageLoader";
-import { PAGE_LOADER_GUARD } from "@/components/motion/pageLoaderConfig";
 import { THEME_FLASH_GUARD } from "@/components/theme/config";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 
@@ -15,6 +13,9 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 //
 // The page ground is set on <main> rather than html/body, so the docs-style kit mounts
 // (/components, /style-guide) keep their own ground.
+//
+// No startup loader: the studio's PageLoader drew the magenta "MW" mark on first paint, and the
+// client asked for it gone (Sep 2026).
 
 export default function SiteLayout({
   children,
@@ -22,12 +23,10 @@ export default function SiteLayout({
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: THEME_FLASH_GUARD }} />
-      <script dangerouslySetInnerHTML={{ __html: PAGE_LOADER_GUARD }} />
       <ThemeProvider>
         <RegionProvider>
           <CartProvider>
             <AnalyticsBeacon />
-            <PageLoader />
             <SiteHeader />
             <main id="main" style={{ background: "var(--background-positive-secondary)" }}>
               {children}
