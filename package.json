@@ -1,36 +1,19 @@
 {
-  "name": "domain-services",
-  "version": "0.1.0",
+  "name": "corporate-domain-registry",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "engines": {
     "node": "22.x"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@carbon/icons-react": "^11.80.0",
-    "@neondatabase/serverless": "^1.1.0",
-    "@vercel/blob": "^2.8.0",
-    "lenis": "^1.3.23",
-    "next": "16.2.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "shiki": "^4.1.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.6",
-    "typescript": "^5"
-  },
-  "magentaweb": {
-    "system": "6.37.1",
-    "tag": "v6.37.1"
+    "dev:web": "npm run dev -w @cdr/web",
+    "dev:api": "npm run dev -w @cdr/api",
+    "build:web": "npm run export -w @cdr/web",
+    "build:api": "npm run build -w @cdr/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint -w @cdr/web"
   }
 }

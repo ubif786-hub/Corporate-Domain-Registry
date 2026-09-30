@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,8 +14,8 @@
 /coverage
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
 /build
@@ -43,12 +43,17 @@ next-env.d.ts
 
 .vercel
 
-# the cPanel export (scripts/export-cpanel.mjs)
-/cpanel/api/geo/*.mmdb
-/.export-aside/
-/.export-build.log
+# the static export (apps/web/scripts/export-static.mjs)
+.export-aside/
+.export-build.log
 .parity/
 
-# payment: the local stand-in for the config and order store that live ABOVE public_html on the host
+# the API: its bundle, the IP database, and the local stand-ins for the settings file and the order
+# store that live outside the web root on the server (/srv/cdr/cdr.env, /srv/cdr/cdr-orders/)
+apps/api/dist/
+apps/api/data/
+apps/api/cdr.env
+apps/api/cdr-orders/
+*.mmdb
 /cdr-config.php
 /cdr-orders/

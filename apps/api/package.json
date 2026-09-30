@@ -1,0 +1,29 @@
+{
+  "name": "@cdr/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "node build.mjs",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "geoip": "node scripts/fetch-geoip.mjs"
+  },
+  "dependencies": {
+    "@cdr/shared": "*",
+    "@xmldom/xmldom": "^0.9.8",
+    "express": "^5.1.0",
+    "maxmind": "^4.3.25"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22",
+    "esbuild": "^0.25.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5"
+  }
+}

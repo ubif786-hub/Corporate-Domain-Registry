@@ -1,0 +1,39 @@
+# The API (apps/api), one process, behind nginx. Installed as /etc/systemd/system/cdr-api.service
+# by setup.sh. Logs: journalctl -u cdr-api
+[Unit]
+Description=Corporate Domain Registry API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cdr
+Group=cdr
+WorkingDirectory=/srv/cdr/api
+Environment=NODE_ENV=production
+Environment=CDR_CONFIG=/srv/cdr/cdr.env
+Environment=HOST=127.0.0.1
+Environment=PORT=4000
+Environment=SWEEP_INTERVAL_SECONDS=300
+ExecStart=/usr/bin/node --enable-source-maps /srv/cdr/api/server.js
+Restart=always
+RestartSec=3
+# A restart waits for registrations in progress (server.ts gives them up to a minute).
+TimeoutStopSec=90
+KillSignal=SIGTERM
+
+# It reads its code, its settings and the IP database, and writes only the orders.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/srv/cdr/cdr-orders
+
+[Install]
+WantedBy=multi-user.target
