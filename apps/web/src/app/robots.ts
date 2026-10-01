@@ -22,11 +22,11 @@ export default function robots(): MetadataRoute.Robots {
       // The wildcard first, then the answer-engine crawlers BY NAME. The wildcard already
       // allows them; naming them means a later decision to disallow some other bot cannot
       // catch these by accident (the zafiro pattern, adopted fleet-wide 17 Sep 2026).
-      { userAgent: "*", allow: "/", disallow: ["/cart", "/login"] },
-      { userAgent: "GPTBot", allow: "/", disallow: ["/cart", "/login"] },
-      { userAgent: "ClaudeBot", allow: "/", disallow: ["/cart", "/login"] },
-      { userAgent: "PerplexityBot", allow: "/", disallow: ["/cart", "/login"] },
-      { userAgent: "Google-Extended", allow: "/", disallow: ["/cart", "/login"] },
+      { userAgent: "*", allow: "/", disallow: ["/cart", "/login", "/admin"] },
+      { userAgent: "GPTBot", allow: "/", disallow: ["/cart", "/login", "/admin"] },
+      { userAgent: "ClaudeBot", allow: "/", disallow: ["/cart", "/login", "/admin"] },
+      { userAgent: "PerplexityBot", allow: "/", disallow: ["/cart", "/login", "/admin"] },
+      { userAgent: "Google-Extended", allow: "/", disallow: ["/cart", "/login", "/admin"] },
     ],
     sitemap: `${BASE}/sitemap.xml`,
   };

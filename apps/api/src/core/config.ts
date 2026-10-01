@@ -28,7 +28,6 @@ export interface Config {
   opensrsApiKey: string;
   opensrsNameservers: string[];
   cadRate: number;
-  adminToken: string;
   orderSecret: string;
   cronToken: string;
   /** PostgreSQL, where the orders live (core/db.ts). On the droplet a Unix-socket address. */
@@ -72,7 +71,6 @@ function parse(raw: Record<string, string | undefined>): Config {
     opensrsApiKey: clean(raw.OPENSRS_API_KEY),
     opensrsNameservers: clean(raw.OPENSRS_NAMESERVERS).split(",").map((s) => s.trim()).filter(Boolean),
     cadRate: Number.isFinite(cadRate) && cadRate > 0 ? cadRate : 1,
-    adminToken: clean(raw.ADMIN_TOKEN),
     orderSecret: clean(raw.ORDER_SECRET),
     cronToken: clean(raw.CRON_TOKEN),
     databaseUrl: clean(raw.DATABASE_URL),

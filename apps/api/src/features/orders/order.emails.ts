@@ -49,7 +49,7 @@ export function orderSummary(o: Order): string {
   out.push(r.email + ", " + r.phone);
   out.push("Ordered from IP " + (o.registrant_ip || "?") + " at " + o.created_at);
   out.push("");
-  out.push("The full record is on the admin page: " + config().siteUrl + "/api/admin/");
+  out.push("The full record is on the admin page: " + config().siteUrl + "/admin/orders/view/?id=" + o.id);
   return out.join("\n") + "\n";
 }
 

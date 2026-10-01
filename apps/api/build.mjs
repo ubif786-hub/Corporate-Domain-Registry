@@ -5,8 +5,9 @@ import { cpSync, existsSync, rmSync } from "node:fs";
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/server.ts"],
-  outfile: "dist/server.js",
+  // server.js is the API; cli.js adds admin accounts from the command line (src/cli.ts).
+  entryPoints: { server: "src/server.ts", cli: "src/cli.ts" },
+  outdir: "dist",
   bundle: true,
   platform: "node",
   target: "node22",

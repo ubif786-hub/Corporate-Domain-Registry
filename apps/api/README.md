@@ -10,7 +10,7 @@ slash:
 | `POST /api/checkout/` | re-checks every domain, writes the order, starts a Stripe Checkout Session (card held, not charged) |
 | `POST /api/stripe-webhook/` | Stripe says the customer paid; the order is registered at Tucows, then captured or released |
 | `GET /api/order-status/?order=&t=` | the done page's progress; also picks up a late webhook and keeps the order moving |
-| `/api/admin/` | the client's order list, one order in full, CSV export (signed in with `ADMIN_TOKEN`) |
+| `/api/admin/*` | the JSON behind the admin panel at `/admin/` (dashboard, orders, domains, customers, team, account, CSV); named accounts, see below |
 | `GET /api/cron/?token=` | runs the sweep now (it also runs every 5 minutes inside the process) |
 
 ## Layout: one folder per feature
@@ -38,7 +38,7 @@ src/
     orders/              the tables (order.schema.ts), the order store, the fulfilment state machine,
                          the emails, GET /api/order-status/
     stripe-webhook/      POST /api/stripe-webhook/
-    admin/               /api/admin/: routes, HTML views, CSV
+    admin/               /api/admin/*: accounts and sessions, the panel's queries, CSV
     cron/                the sweep and GET /api/cron/
 ```
 
@@ -75,6 +75,25 @@ npm run db:generate          # writes the SQL migration into drizzle/; commit it
 
 The API applies new migrations itself when it starts (the build copies `drizzle/` to
 `dist/migrations/`). Never edit a migration that has reached the server; add a new one.
+
+## Admin accounts
+
+The panel at `/admin/` signs people in by email and password. Passwords are scrypt hashes; a
+session is a random token in an HttpOnly, SameSite=Strict cookie scoped to `/api/admin`, and the
+table keeps only its SHA-256. Sessions end after 12 hours idle or 14 days. Sign-in is limited to
+10 tries per address and 6 wrong passwords per email in 15 minutes. Every write needs the
+`X-CDR-Admin` header. Owners add people on the Team page; everything is in `admin_audit`.
+
+Nobody types another person's password: a new person, or one who forgot theirs, gets a setup link
+(72 hours, works once) and chooses their own. The first owner comes from the command line:
+
+```
+CDR_CONFIG=cdr.env npx tsx src/cli.ts add-user --email you@example.com --name "Your Name" --role owner
+CDR_CONFIG=cdr.env npx tsx src/cli.ts link --email you@example.com     # a fresh link
+CDR_CONFIG=cdr.env npx tsx src/cli.ts list
+```
+
+(`dist/cli.js` is the same command in the build; deploy/droplet/README.md has the server form.)
 
 ## Settings
 

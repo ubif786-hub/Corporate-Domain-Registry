@@ -133,6 +133,33 @@ ssh cdr systemctl start cdr-api
 ssh -t cdr 'runuser -u cdr -- psql -h /var/run/postgresql -d cdr'
 ```
 
+## 7. Admin panel
+
+The panel is at https://www.corporatedomainregistry.com/admin/. Everyone has their own sign-in.
+Add the first owner on the server; the command prints a setup link (72 hours, works once), and the
+person opens it and chooses their own password:
+
+```
+ssh cdr 'runuser -u cdr -- env CDR_CONFIG=/srv/cdr/cdr.env node /srv/cdr/api/cli.js add-user --email you@example.com --name "Your Name" --role owner'
+ssh cdr 'runuser -u cdr -- env CDR_CONFIG=/srv/cdr/cdr.env node /srv/cdr/api/cli.js list'
+ssh cdr 'runuser -u cdr -- env CDR_CONFIG=/srv/cdr/cdr.env node /srv/cdr/api/cli.js link --email you@example.com'   # forgotten password
+```
+
+Or set a temporary password directly (a weak one is allowed here; change it under Your account
+before payments go live):
+
+```
+ssh cdr 'runuser -u cdr -- env CDR_CONFIG=/srv/cdr/cdr.env node /srv/cdr/api/cli.js add-user --email you@example.com --name "Your Name" --role owner --password TEMPORARY'
+ssh cdr 'runuser -u cdr -- env CDR_CONFIG=/srv/cdr/cdr.env node /srv/cdr/api/cli.js set-password --email you@example.com --password TEMPORARY'
+```
+
+After that, owners add everyone else on the Team page. The `/admin/` pages get no-index and
+no-framing headers from `cdr-site.conf`; after changing that file, copy it up and reload nginx:
+
+```
+scp deploy/droplet/cdr-site.conf cdr:/tmp/ && ssh cdr 'install -m 644 /tmp/cdr-site.conf /etc/nginx/snippets/cdr-site.conf && nginx -t && systemctl reload nginx'
+```
+
 ## Checks
 
 ```

@@ -6,15 +6,32 @@ import { createHash } from "node:crypto";
 
 const hits = new Map<string, number[]>();
 
-export function rateLimited(bucket: string, ip: string | null, max: number, windowSeconds: number): boolean {
-  if (!ip) return false;
-  const key = bucket + ":" + createHash("sha256").update(ip).digest("hex").slice(0, 16);
+const keyOf = (bucket: string, who: string) => bucket + ":" + createHash("sha256").update(who).digest("hex").slice(0, 16);
+
+function recentHits(key: string, windowSeconds: number): number[] {
   const now = Date.now();
   const recent = (hits.get(key) ?? []).filter((t) => t > now - windowSeconds * 1000);
-  const limited = recent.length >= max;
-  if (!limited) recent.push(now);
   hits.set(key, recent);
+  return recent;
+}
+
+/** Counts this request and answers true once `max` were seen in the window (the request is then
+ *  not counted). */
+export function rateLimited(bucket: string, ip: string | null, max: number, windowSeconds: number): boolean {
+  if (!ip) return false;
+  const recent = recentHits(keyOf(bucket, ip), windowSeconds);
+  const limited = recent.length >= max;
+  if (!limited) recent.push(Date.now());
   return limited;
+}
+
+/** For limits on failures only (the admin sign-in per email): ask first, count a failure after. */
+export function overLimit(bucket: string, who: string, max: number, windowSeconds: number): boolean {
+  return recentHits(keyOf(bucket, who), windowSeconds).length >= max;
+}
+
+export function countFailure(bucket: string, who: string, windowSeconds: number): void {
+  recentHits(keyOf(bucket, who), windowSeconds).push(Date.now());
 }
 
 // Forget visitors nobody has seen for a day.
