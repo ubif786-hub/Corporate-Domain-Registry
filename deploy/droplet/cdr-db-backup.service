@@ -1,0 +1,11 @@
+# One dump of the orders database (cdr-db-backup.sh). Started by cdr-db-backup.timer.
+# Installed as /etc/systemd/system/cdr-db-backup.service by postgres.sh. Logs: journalctl -u cdr-db-backup
+[Unit]
+Description=Corporate Domain Registry database backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cdr-db-backup
+Nice=10

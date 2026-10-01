@@ -9,7 +9,7 @@ import { tryConfig } from "../../core/config";
 import { isoNow, toUnix, unixNow } from "../../core/time";
 import { stripe } from "../../integrations/stripe/client";
 import { DRIVABLE, fulfil, recordCheckout, recordExpired } from "../orders/fulfilment.service";
-import { orderIds, readOrder } from "../orders/order.store";
+import { orderIdsWithStatus, readOrder } from "../orders/order.store";
 
 let running = false;
 
@@ -18,13 +18,14 @@ export async function sweep(budgetSeconds = 240): Promise<{ ran_at: string; repo
   const ranAt = isoNow();
   if (running) return { ran_at: ranAt, report: ["a sweep is already running"] };
   const c = tryConfig();
-  if (!c || !c.stripeSecretKey || !c.opensrsUsername || !c.opensrsApiKey) return { ran_at: ranAt, report: ["not configured"] };
+  if (!c || !c.stripeSecretKey || !c.opensrsUsername || !c.opensrsApiKey || !c.databaseUrl) return { ran_at: ranAt, report: ["not configured"] };
   running = true;
   try {
     const started = unixNow();
-    for (const id of orderIds()) {
+    // Only orders that can still move: unpaid checkouts (their webhook may be lost) and the drivable.
+    for (const id of await orderIdsWithStatus(["pending_payment", ...DRIVABLE])) {
       if (unixNow() - started > budgetSeconds) { report.push("out of time; the next run continues"); break; }
-      let order = readOrder(id);
+      let order = await readOrder(id);
       if (!order) continue;
 
       const age = unixNow() - (toUnix(order.created_at) ?? unixNow());
@@ -35,10 +36,10 @@ export async function sweep(budgetSeconds = 240): Promise<{ ran_at: string; repo
             const o = await recordCheckout(id, r.body);
             if (o) report.push(`${id}: payment found without a webhook, now ${o.status}`);
           } else if (r.body.status === "expired") {
-            recordExpired(id);
+            await recordExpired(id);
           }
         }
-        order = readOrder(id);
+        order = await readOrder(id);
         if (!order) continue;
       }
 

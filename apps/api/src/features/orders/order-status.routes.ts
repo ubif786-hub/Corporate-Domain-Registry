@@ -27,7 +27,7 @@ orderStatusRouter.all("/api/order-status", allow("GET"), async (req, res) => {
   const id = typeof req.query.order === "string" ? req.query.order : "";
   const token = typeof req.query.t === "string" ? req.query.t : "";
   if (!isValidOrderId(id) || !sameToken(orderToken(id), token)) throw new HttpError(404, "not_found", "Order not found.");
-  let order = readOrder(id);
+  let order = await readOrder(id);
   if (!order) throw new HttpError(404, "not_found", "Order not found.");
 
   // The webhook is the normal path; this is the fallback when it has not arrived.
@@ -38,7 +38,7 @@ orderStatusRouter.all("/api/order-status", allow("GET"), async (req, res) => {
         const recorded = await recordCheckout(id, r.body);
         if (recorded) order = recorded;
       } else if (r.body.status === "expired") {
-        order = recordExpired(id) ?? order;
+        order = (await recordExpired(id)) ?? order;
       }
     }
   }

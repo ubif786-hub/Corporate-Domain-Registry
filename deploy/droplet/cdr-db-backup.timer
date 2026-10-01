@@ -1,0 +1,12 @@
+# Every 6 hours (00:15, 06:15, 12:15, 18:15 UTC); a run missed while the server was off happens at
+# the next boot. Installed as /etc/systemd/system/cdr-db-backup.timer by postgres.sh.
+[Unit]
+Description=Corporate Domain Registry database backup, every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 00/6:15:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

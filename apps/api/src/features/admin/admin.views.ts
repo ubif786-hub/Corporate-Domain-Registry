@@ -70,7 +70,24 @@ export function orderPage(o: Order, head: string, self: string, csrf: string, dr
   return page("Order " + o.id, body);
 }
 
-export function listPage(opts: { orders: Order[]; head: string; self: string; q: string; want: string; hideAbandoned: boolean; statuses: string[] }): string {
+/** Newer and older links that keep the filters. */
+function pager(opts: { pageNo: number; pages: number; q: string; want: string; hideAbandoned: boolean }): string {
+  if (opts.pages <= 1) return "";
+  const link = (n: number, label: string) => {
+    const p = new URLSearchParams();
+    if (opts.q) p.set("q", opts.q);
+    if (opts.want) p.set("status", opts.want);
+    if (!opts.hideAbandoned) p.set("all", "1");
+    p.set("page", String(n));
+    return `<a href="?${h(p.toString())}">${label}</a>`;
+  };
+  const parts = [];
+  if (opts.pageNo > 1) parts.push(link(opts.pageNo - 1, "Newer"));
+  if (opts.pageNo < opts.pages) parts.push(link(opts.pageNo + 1, "Older"));
+  return `<p class="meta">${parts.join(" &middot; ")}</p>`;
+}
+
+export function listPage(opts: { orders: Order[]; total: number; pageNo: number; pages: number; head: string; self: string; q: string; want: string; hideAbandoned: boolean; statuses: string[] }): string {
   const rows = opts.orders.map((o) => {
     const r = o.registrant;
     const domains = o.lines.map((l) => `${h(l.domain)} ${badge(l.state)}`).join("<br>");
@@ -87,7 +104,7 @@ export function listPage(opts: { orders: Order[]; head: string; self: string; q:
   const body = opts.head + '<div class="card"><h1>Orders</h1>'
     + `<form method="get" class="filters"><input type="search" name="q" value="${h(opts.q)}" placeholder="Name, email, domain or order"> <select name="status">${options}</select> <button>Filter</button>`
     + (opts.hideAbandoned ? ' <a href="?all=1">Include unpaid checkouts</a>' : ` <a href="${h(opts.self)}">Hide unpaid checkouts</a>`) + "</form>"
-    + `<p class="meta">${opts.orders.length} shown.</p>`
-    + `<div class="scroll"><table><thead><tr><th>Order</th><th>Created (UTC)</th><th>Status</th><th>Customer</th><th>Domains</th><th>Total</th><th>Charged</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    + `<p class="meta">${opts.total} ${opts.total === 1 ? "order" : "orders"}${opts.pages > 1 ? `, page ${opts.pageNo} of ${opts.pages}` : ""}.</p>`
+    + `<div class="scroll"><table><thead><tr><th>Order</th><th>Created (UTC)</th><th>Status</th><th>Customer</th><th>Domains</th><th>Total</th><th>Charged</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${pager(opts)}</div>`;
   return page("Orders", body);
 }

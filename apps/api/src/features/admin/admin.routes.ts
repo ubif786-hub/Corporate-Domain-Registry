@@ -4,8 +4,9 @@
 // holds a cookie derived from it, never the token itself). Nothing here is linked from the site
 // and the page asks search engines to stay away.
 //
-//   /api/admin/                     every order, newest first (filter by text or status)
+//   /api/admin/                     the orders, newest first, 100 a page (filter by text or status)
 //   /api/admin/?order=<id>          one order in full, with its history
+//   /api/admin/?order=<id>&format=json   the same order as JSON
 //   /api/admin/?format=csv          one row per domain, for a spreadsheet
 //   /api/admin/?balance=1           adds the Tucows balance to the header line
 
@@ -17,8 +18,8 @@ import { rateLimited } from "../../core/rate-limit";
 import { visitorIp } from "../../core/visitor";
 import { balance } from "../../integrations/opensrs/client";
 import { DRIVABLE, fulfil } from "../orders/fulfilment.service";
-import { isValidOrderId, orderIds, readOrder } from "../orders/order.store";
-import type { Order } from "../orders/order.types";
+import type { OrderStatus } from "@cdr/shared";
+import { isValidOrderId, listOrders, ordersForExport, readOrder } from "../orders/order.store";
 import { ordersCsv } from "./admin.csv";
 import { headerLine, listPage, orderPage, page, signInPage } from "./admin.views";
 
@@ -46,9 +47,9 @@ function secure(res: Response): void {
   });
 }
 
-function allOrders(): Order[] {
-  return orderIds().map(readOrder).filter((o): o is Order => o !== null);
-}
+/** Checkouts that were never paid: hidden from the list unless asked for, never in the CSV. */
+const UNPAID: readonly OrderStatus[] = ["pending_payment", "expired", "stripe_error"];
+const PAGE_SIZE = 100;
 
 export const adminRouter = Router();
 
@@ -100,7 +101,7 @@ adminRouter.all("/api/admin", allow("GET", "POST"), express.urlencoded({ extende
     const day = new Date().toISOString().slice(0, 10);
     res.set("Content-Type", "text/csv; charset=utf-8");
     res.set("Content-Disposition", `attachment; filename="cdr-orders-${day}.csv"`);
-    res.send(ordersCsv(allOrders()));
+    res.send(ordersCsv(await ordersForExport(UNPAID)));
     return;
   }
 
@@ -113,7 +114,12 @@ adminRouter.all("/api/admin", allow("GET", "POST"), express.urlencoded({ extende
   /* ---------- one order ---------- */
   if (req.query.order !== undefined) {
     const id = str(req.query.order);
-    const o = isValidOrderId(id) ? readOrder(id) : null;
+    const o = isValidOrderId(id) ? await readOrder(id) : null;
+    if (req.query.format === "json") {
+      if (!o) { res.status(404).json({ error: "not_found" }); return; }
+      res.json(o);
+      return;
+    }
     if (!o) {
       res.status(404).type("html").send(page("Not found", `${head}<p>No such order. <a href="${SELF}">All orders</a></p>`));
       return;
@@ -123,19 +129,19 @@ adminRouter.all("/api/admin", allow("GET", "POST"), express.urlencoded({ extende
   }
 
   /* ---------- every order ---------- */
-  const q = str(req.query.q).trim().toLowerCase();
+  const q = str(req.query.q).trim();
   const want = str(req.query.status);
   const hideAbandoned = req.query.all === undefined;
-  const statuses = new Set<string>();
-  const shown: Order[] = [];
-  for (const o of allOrders()) {
-    statuses.add(o.status);
-    if (hideAbandoned && want === "" && ["pending_payment", "expired", "stripe_error"].includes(o.status)) continue;
-    if (want !== "" && o.status !== want) continue;
-    const r = o.registrant;
-    const text = [o.id, r.first_name, r.last_name, r.org_name, r.email, ...o.lines.map((l) => l.domain)].join(" ").toLowerCase();
-    if (q !== "" && !text.includes(q)) continue;
-    shown.push(o);
-  }
-  res.type("html").send(listPage({ orders: shown, head, self: SELF, q: str(req.query.q).trim(), want, hideAbandoned, statuses: [...statuses] }));
+  const pageNo = Math.max(1, Math.floor(Number(str(req.query.page)) || 1));
+  const found = await listOrders({
+    text: q,
+    status: want,
+    hide: hideAbandoned ? UNPAID : [],
+    limit: PAGE_SIZE,
+    offset: (pageNo - 1) * PAGE_SIZE,
+  });
+  res.type("html").send(listPage({
+    orders: found.orders, total: found.total, pageNo, pages: Math.max(1, Math.ceil(found.total / PAGE_SIZE)),
+    head, self: SELF, q, want, hideAbandoned, statuses: found.statuses,
+  }));
 });

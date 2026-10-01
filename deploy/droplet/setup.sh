@@ -63,6 +63,9 @@ install -m 644 fetch-geoip.mjs /srv/cdr/geo/fetch-geoip.mjs
 echo '0 4 3 * * root node /srv/cdr/geo/fetch-geoip.mjs /srv/cdr/geo/dbip-city-lite.mmdb >/dev/null 2>&1' > /etc/cron.d/cdr-geoip
 chmod 644 /etc/cron.d/cdr-geoip
 
+# PostgreSQL for the orders, swap, and the database backups every 6 hours.
+bash ./postgres.sh
+
 # The API service. It starts once the deploy job has uploaded server.js; the 5-minute sweep runs
 # inside it, so there is no cron job for orders.
 install -m 644 cdr-api.service /etc/systemd/system/cdr-api.service

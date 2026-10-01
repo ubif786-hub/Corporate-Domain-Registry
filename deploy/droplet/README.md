@@ -4,15 +4,18 @@ The site runs on a DigitalOcean droplet because GoDaddy's shared hosting can't r
 blocks outgoing connections to port 55443 (tested 28 and 29 Sep 2026, confirmed by Tucows 30 Sep).
 
 What runs there: Ubuntu 24.04, nginx serving the static export (`apps/web`), the API (`apps/api`,
-Node 22, systemd unit `cdr-api`) behind `/api/`, a Let's Encrypt certificate, a firewall, and a
-`deploy` user that GitHub Actions uploads with. Secrets and orders live outside the web root:
+Node 22, systemd unit `cdr-api`) behind `/api/`, PostgreSQL 16 holding the orders, a Let's Encrypt
+certificate, a firewall, and a `deploy` user that GitHub Actions uploads with. Secrets and orders
+live outside the web root:
 
 ```
 /srv/cdr/public_html/    the static site (uploaded by the deploy job)
 /srv/cdr/api/server.js   the API bundle (uploaded by the deploy job, run as user "cdr")
+/srv/cdr/api/migrations/ the database migrations, applied by the API when it starts
 /srv/cdr/cdr.env         the settings and keys (filled in by hand, never uploaded)
-/srv/cdr/cdr-orders/     the orders
+/srv/cdr/cdr-orders/     the outbox of the "file" mail transport (orders are in the database)
 /srv/cdr/geo/            the IP database, refreshed monthly
+/var/backups/cdr-db/     database dumps, every 6 hours, 7 days kept
 ```
 
 The droplet: `cdr-web`, Toronto (TOR1), IP `142.93.145.38`, on the client's DigitalOcean account.
@@ -68,14 +71,11 @@ restarts `cdr-api`. Check the site at `http://<IP>/`.
 
 ### Deploying by hand instead
 
-From the repository root, after `npm ci`:
+From the repository root, after `npm install` (needs only ssh and tar, so it works from Git Bash):
 
 ```
-npm run export -w @cdr/web              # apps/web/out, shop on
-npm run build -w @cdr/api               # apps/api/dist/server.js
-rsync -az --delete apps/web/out/ cdr:/srv/cdr/public_html/
-rsync -az apps/api/dist/ cdr:/srv/cdr/api/
-ssh cdr 'chown -R deploy:deploy /srv/cdr/public_html /srv/cdr/api && systemctl restart cdr-api'
+bash deploy/droplet/push.sh              # shop off
+bash deploy/droplet/push.sh --payments   # shop on
 ```
 
 ## 5. Move the domain (go-live)
@@ -90,6 +90,49 @@ ssh cdr 'chown -R deploy:deploy /srv/cdr/public_html /srv/cdr/api && systemctl r
 
 3. Stripe webhook: `https://www.corporatedomainregistry.com/api/stripe-webhook/`.
 
+## 6. Database and backups
+
+PostgreSQL 16 from Ubuntu, set up by `postgres.sh` (setup.sh runs it; it is safe to run again).
+It listens on this machine only. The database `cdr` belongs to the role `cdr`, and the API's
+system user `cdr` logs in over the Unix socket without a password (peer authentication):
+
+```
+DATABASE_URL=postgresql://cdr@/cdr?host=/var/run/postgresql
+```
+
+Tables: `orders`, `order_lines` (one row per domain), `order_log` (each order's history). The
+schema is in `apps/api/src/features/orders/order.schema.ts`; migrations in `apps/api/drizzle/`.
+
+**Backups, two layers:**
+
+1. `cdr-db-backup.timer` dumps the database every 6 hours (00:15, 06:15, 12:15, 18:15 UTC) into
+   `/var/backups/cdr-db/` and keeps the newest 28 (7 days). The dumps hold customer details: the
+   folder is readable by `postgres` only.
+2. DigitalOcean droplet backups (enable in the panel: the droplet, Backups, Enable, Daily). They
+   copy the whole disk, dumps included, and are stored away from the droplet. Daily costs 30% of
+   the droplet price and keeps 7 days.
+
+```
+ssh cdr systemctl list-timers cdr-db-backup.timer      # when the next dump runs
+ssh cdr ls -lh /var/backups/cdr-db/                    # the dumps
+ssh cdr /usr/local/sbin/cdr-db-backup                  # one dump now (before a risky change)
+ssh cdr journalctl -u cdr-db-backup -n 20              # the last runs
+```
+
+**Restore a dump** (replaces the current orders with the dump's):
+
+```
+ssh cdr systemctl stop cdr-api
+ssh cdr 'runuser -u postgres -- pg_restore --clean --if-exists -d cdr /var/backups/cdr-db/cdr-<stamp>.dump'
+ssh cdr systemctl start cdr-api
+```
+
+**Look at the data** (read-only habits: the admin page and its CSV cover daily needs):
+
+```
+ssh -t cdr 'runuser -u cdr -- psql -h /var/run/postgresql -d cdr'
+```
+
 ## Checks
 
 ```
@@ -100,7 +143,8 @@ curl -sI https://www.corporatedomainregistry.com/api/anything-else/   # 404
 curl -sI https://www.corporatedomainregistry.com/lookup               # 308 to /whois/
 curl -s  "https://www.corporatedomainregistry.com/api/cron/?token=<CRON_TOKEN>"   # {"ran_at": ...}
 ssh cdr systemctl status cdr-api
-ssh cdr journalctl -u cdr-api -n 50
+ssh cdr journalctl -u cdr-api -n 50      # "[db] ready" after each start
+ssh cdr systemctl status postgresql
 ```
 
 The redirects in `cdr-site.conf` repeat `apps/web/redirects.json`. If a redirect changes there,

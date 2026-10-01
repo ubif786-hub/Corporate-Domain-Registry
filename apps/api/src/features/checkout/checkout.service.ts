@@ -11,7 +11,7 @@ import { HttpError } from "../../core/http";
 import { money } from "../../core/money";
 import { isoNow, unixNow } from "../../core/time";
 import { stripe } from "../../integrations/stripe/client";
-import { newOrderId, note, orderToken, updateOrder, writeOrder } from "../orders/order.store";
+import { insertOrder, newOrderId, note, orderToken, updateOrder } from "../orders/order.store";
 import type { Order, OrderLine } from "../orders/order.types";
 
 interface NewOrder {
@@ -47,7 +47,7 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
     log: [],
   };
   note(order, `Order created, ${money(subtotal, currency)}; all domains confirmed available.`);
-  writeOrder(order);
+  await insertOrder(order);
 
   const r = await stripe("POST", "/checkout/sessions", {
     mode: "payment",
@@ -77,7 +77,7 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
   }, "cdr-checkout-" + id);
 
   if (r.status !== 200 || !r.body?.url) {
-    updateOrder(id, (o) => {
+    await updateOrder(id, (o) => {
       o.status = "stripe_error";
       o.stripe.error = { http: r.status, type: r.body?.error?.type ?? null, message: r.body?.error?.message ?? null };
       note(o, "Stripe refused the session: " + (r.body?.error?.message ?? `HTTP ${r.status}`));
@@ -86,7 +86,7 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
     throw new HttpError(502, "payment_unavailable", "Payment could not be started. Nothing was charged; try again in a moment.");
   }
 
-  updateOrder(id, (o) => {
+  await updateOrder(id, (o) => {
     o.stripe.session_id = r.body.id;
     o.stripe.expires_at = Number.isInteger(r.body.expires_at) ? isoNow(new Date(r.body.expires_at * 1000)) : null;
     return o;

@@ -52,7 +52,7 @@ next-env.d.ts
 # store that live outside the web root on the server (/srv/cdr/cdr.env, /srv/cdr/cdr-orders/)
 apps/api/dist/
 apps/api/data/
-apps/api/cdr.env
+apps/api/cdr*.env
 apps/api/cdr-orders/
 *.mmdb
 /cdr-config.php

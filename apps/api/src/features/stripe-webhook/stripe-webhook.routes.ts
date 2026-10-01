@@ -43,14 +43,14 @@ stripeWebhookRouter.all(
 
     const session = event.data?.object ?? {};
     const orderId = session.metadata?.order_id ?? session.client_reference_id ?? null;
-    if (!isValidOrderId(orderId) || !readOrder(orderId)) return sendJson(res, 200, { received: true, ignored: "unknown order" });
+    if (!isValidOrderId(orderId) || !(await readOrder(orderId))) return sendJson(res, 200, { received: true, ignored: "unknown order" });
 
     let order;
     if (event.type === "checkout.session.completed") {
       order = await recordCheckout(orderId, session, event.id);
       if (order === false) throw new HttpError(503, "stripe_unavailable", "Could not read the payment; Stripe will retry.");
     } else {
-      order = updateOrder(orderId, (o) => {
+      order = await updateOrder(orderId, (o) => {
         if (o.events.includes(event.id)) return null;
         o.events.push(event.id);
         if (o.status !== "pending_payment") return o;

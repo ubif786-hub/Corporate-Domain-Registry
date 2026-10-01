@@ -31,6 +31,9 @@ export interface Config {
   adminToken: string;
   orderSecret: string;
   cronToken: string;
+  /** PostgreSQL, where the orders live (core/db.ts). On the droplet a Unix-socket address. */
+  databaseUrl: string;
+  /** Only the "file" mail transport writes here now (its outbox/ folder). */
   ordersDir: string;
   geoipDb: string;
   /** Local tests only: point the API at a stand-in for Tucows or Stripe. */
@@ -72,6 +75,7 @@ function parse(raw: Record<string, string | undefined>): Config {
     adminToken: clean(raw.ADMIN_TOKEN),
     orderSecret: clean(raw.ORDER_SECRET),
     cronToken: clean(raw.CRON_TOKEN),
+    databaseUrl: clean(raw.DATABASE_URL),
     ordersDir: resolve(clean(raw.ORDERS_DIR) || "/srv/cdr/cdr-orders"),
     geoipDb: resolve(clean(raw.GEOIP_DB) || "/srv/cdr/geo/dbip-city-lite.mmdb"),
     opensrsUrl: clean(raw.OPENSRS_URL),

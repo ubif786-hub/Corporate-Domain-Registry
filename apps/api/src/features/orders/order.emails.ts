@@ -104,5 +104,5 @@ export async function sendFinalEmails(o: Order): Promise<void> {
   if (o.settled_early) intro += "The card hold was about to expire, so the order was charged while some names were still pending at Tucows. Check them in the Tucows panel.\n";
   await sendMail(c.notifyEmail, `${subjectPrefix(o)}${what} ${o.id}, ${money(captured, o.currency)}`, (intro !== "" ? intro + "\n" : "") + orderSummary(o));
 
-  updateOrder(o.id, (x) => { x.notified_final = isoNow(); return x; });
+  await updateOrder(o.id, (x) => { x.notified_final = isoNow(); return x; });
 }

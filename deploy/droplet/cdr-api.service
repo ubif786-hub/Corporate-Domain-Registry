@@ -2,8 +2,9 @@
 # by setup.sh. Logs: journalctl -u cdr-api
 [Unit]
 Description=Corporate Domain Registry API
-After=network-online.target
-Wants=network-online.target
+# The orders live in PostgreSQL on this server (postgres.sh).
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
 
 [Service]
 Type=simple
@@ -22,7 +23,8 @@ RestartSec=3
 TimeoutStopSec=90
 KillSignal=SIGTERM
 
-# It reads its code, its settings and the IP database, and writes only the orders.
+# It reads its code, its settings and the IP database. It writes only to the database (over its
+# socket) and to /srv/cdr/cdr-orders (the outbox of the "file" mail transport).
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

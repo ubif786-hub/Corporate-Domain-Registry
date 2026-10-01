@@ -6,11 +6,13 @@
 //   SWEEP_INTERVAL_SECONDS   default 300; 0 turns the sweep off
 //   STATIC_DIR               local testing only: also serve the static export from this folder
 //
-// ONE PROCESS. Order changes are safe because one Node process makes them one at a time; a second
-// copy of the API on the same orders folder would break that.
+// Orders live in PostgreSQL (DATABASE_URL in the settings file). Every order change is a
+// transaction with the order's row locked, and one driver per order is a database lock, so a second
+// process would be safe; one is all the site needs.
 
 import { createApp } from "./app";
 import { CONFIG_PATH, tryConfig } from "./core/config";
+import { closeDatabase, database } from "./core/db";
 import { settleInFlight } from "./core/http";
 import { sweep } from "./features/cron/sweep.service";
 
@@ -25,13 +27,23 @@ const server = app.listen(PORT, HOST, () => {
   console.log(c
     ? `[api] settings from ${CONFIG_PATH}: Tucows ${c.opensrsEnv}, Stripe ${c.stripeSecretKey.startsWith("sk_live_") ? "LIVE" : "test"}, mail ${c.mailTransport}`
     : `[api] no settings file at ${CONFIG_PATH}: the shop answers 503 until it exists`);
+  // Apply any new migrations now rather than on the first order. If the database is down, the
+  // site still serves search; order pages answer 503 and the next use tries again.
+  if (c?.databaseUrl) {
+    database()
+      .then(() => console.log("[db] ready"))
+      .catch(() => { /* database() has logged why */ });
+  } else if (c) {
+    console.log("[db] DATABASE_URL is not set: checkout and orders answer 503");
+  }
 });
 
 let timer: NodeJS.Timeout | null = null;
 if (SWEEP_SECONDS > 0) {
   timer = setInterval(() => {
     sweep(240)
-      .then((r) => { if (r.report.length) console.log("[sweep]", r.report.join("; ")); })
+      // "not configured" is expected until the keys are in; only real work is worth a log line.
+      .then((r) => { if (r.report.length && r.report[0] !== "not configured") console.log("[sweep]", r.report.join("; ")); })
       .catch((e) => console.error("[sweep]", e instanceof Error ? e.message : e));
   }, SWEEP_SECONDS * 1000);
 }
@@ -47,6 +59,7 @@ async function shutdown(signal: string) {
   if (timer) clearInterval(timer);
   server.close();
   await settleInFlight(60_000);
+  await closeDatabase();
   process.exit(0);
 }
 process.on("SIGTERM", () => void shutdown("SIGTERM"));

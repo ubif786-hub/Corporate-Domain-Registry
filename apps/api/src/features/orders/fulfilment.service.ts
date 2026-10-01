@@ -47,7 +47,7 @@ const SETTLE_AFTER_SECONDS = 6 * 86_400;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function recordCheckout(orderId: string, session: any, eventId: string | null = null): Promise<Order | null | false> {
-  if (session?.status && session.status !== "complete") return readOrder(orderId);
+  if (session?.status && session.status !== "complete") return await readOrder(orderId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pi: any = null;
   if (session?.payment_intent) {
@@ -58,7 +58,7 @@ export async function recordCheckout(orderId: string, session: any, eventId: str
   }
 
   let notify: "mismatch" | "captured_early" | "no_payment" | null = null;
-  const order = updateOrder(orderId, (o) => {
+  const order = await updateOrder(orderId, (o) => {
     if (eventId !== null) {
       if (o.events.includes(eventId)) return null;
       o.events.push(eventId);
@@ -118,7 +118,7 @@ export async function recordCheckout(orderId: string, session: any, eventId: str
 }
 
 /** A checkout Stripe says has expired: the order is closed, unless something else moved it on. */
-export function recordExpired(orderId: string): Order | null {
+export async function recordExpired(orderId: string): Promise<Order | null> {
   return updateOrder(orderId, (o) => {
     if (o.status !== "pending_payment") return null;
     o.status = "expired";
@@ -134,13 +134,13 @@ const isFinal = (l: OrderLine) => l.state === "registered" || l.state === "faile
 /** Drives one order as far as it can go in about budgetSeconds. Returns the order's status. */
 export async function fulfil(id: string, budgetSeconds = 20): Promise<OrderStatus | "busy" | null> {
   return withDriveLock(id, async () => {
-    const order = readOrder(id);
+    const order = await readOrder(id);
     if (!order || !DRIVABLE.includes(order.status)) return order ? order.status : null;
     const started = unixNow();
 
     if (order.status !== "settle_error") {
       if (order.status === "authorized") {
-        updateOrder(id, (o) => { o.status = "fulfilling"; note(o, "Fulfilment started."); return o; });
+        await updateOrder(id, (o) => { o.status = "fulfilling"; note(o, "Fulfilment started."); return o; });
       }
       // Up to three rounds, so a lost reply is looked up (and a free name retried) in the same
       // pass. Names waiting on the registry (pending) are left for a later pass.
@@ -149,7 +149,7 @@ export async function fulfil(id: string, budgetSeconds = 20): Promise<OrderStatu
           if (unixNow() - started > budgetSeconds) break rounds;
           await fulfilLine(id, i);
         }
-        const again = (readOrder(id)?.lines ?? []).filter((l) => l.state === "new" || l.state === "registering" || l.state === "unknown");
+        const again = ((await readOrder(id))?.lines ?? []).filter((l) => l.state === "new" || l.state === "registering" || l.state === "unknown");
         if (!again.length) break;
         await sleep(2000);
       }
@@ -158,8 +158,8 @@ export async function fulfil(id: string, budgetSeconds = 20): Promise<OrderStatu
   });
 }
 
-function setLine(id: string, i: number, fields: Partial<OrderLine>, text: string): void {
-  updateOrder(id, (o) => {
+async function setLine(id: string, i: number, fields: Partial<OrderLine>, text: string): Promise<void> {
+  await updateOrder(id, (o) => {
     Object.assign(o.lines[i], fields);
     note(o, `${o.lines[i].domain}: ${text}`);
     return o;
@@ -178,17 +178,17 @@ function tucowsDate(s: string): number | null {
 
 /** Moves one line one step. Every result is written before the next Tucows call. */
 async function fulfilLine(id: string, i: number): Promise<void> {
-  const order = readOrder(id);
+  const order = await readOrder(id);
   if (!order) return;
   const line = order.lines[i];
   if (isFinal(line)) return;
 
   if (line.state === "new") {
     if (line.attempts >= MAX_ATTEMPTS) {
-      setLine(id, i, { state: "failed", reason: "error" }, `Gave up after ${MAX_ATTEMPTS} attempts.`);
+      await setLine(id, i, { state: "failed", reason: "error" }, `Gave up after ${MAX_ATTEMPTS} attempts.`);
       return;
     }
-    setLine(id, i, { state: "registering", attempts: line.attempts + 1, attempted_at: isoNow() }, "Registering at Tucows.");
+    await setLine(id, i, { state: "registering", attempts: line.attempts + 1, attempted_at: isoNow() }, "Registering at Tucows.");
     const r = await opensrs.register(line.domain, line.term, order.registrant, order.registrant_ip ?? "");
     const a = r.attributes;
     const tucows = {
@@ -201,21 +201,21 @@ async function fulfilLine(id: string, i: number): Promise<void> {
     const said = "Tucows replied " + (r.transport ? `${r.code} ${r.text}` : `nothing (${r.error})`) + ".";
 
     if (!r.transport) {
-      setLine(id, i, { state: "unknown", opensrs: tucows }, said + " Will ask Tucows what happened before trying again.");
+      await setLine(id, i, { state: "unknown", opensrs: tucows }, said + " Will ask Tucows what happened before trying again.");
     } else if ((typeof a.forced_pending === "string" && a.forced_pending !== "" && a.forced_pending !== "0") || r.code === 440) {
       // Tucows parked the order (usually: not enough balance). It must not complete later without
       // payment, so the line fails and CDR is told to cancel it in the panel.
-      setLine(id, i, { state: "failed", reason: "tucows_on_hold", opensrs: tucows }, said + " Order put on hold by Tucows: cancel it in the Tucows panel.");
+      await setLine(id, i, { state: "failed", reason: "tucows_on_hold", opensrs: tucows }, said + " Order put on hold by Tucows: cancel it in the Tucows panel.");
     } else if (r.code === 200) {
-      setLine(id, i, { state: "registered", registered_at: isoNow(), opensrs: tucows }, said);
+      await setLine(id, i, { state: "registered", registered_at: isoNow(), opensrs: tucows }, said);
     } else if (r.code === 250) {
-      setLine(id, i, { state: "pending", opensrs: tucows }, said + " The registry answers later.");
+      await setLine(id, i, { state: "pending", opensrs: tucows }, said + " The registry answers later.");
     } else if (r.code === 485 || r.code === 211 || r.code === 221) {
-      setLine(id, i, { state: "failed", reason: "taken", opensrs: tucows }, said);
+      await setLine(id, i, { state: "failed", reason: "taken", opensrs: tucows }, said);
     } else if (r.code === 486) {
-      setLine(id, i, { state: "unknown", opensrs: tucows }, said + " A registration is in progress for this name; checking back.");
+      await setLine(id, i, { state: "unknown", opensrs: tucows }, said + " A registration is in progress for this name; checking back.");
     } else {
-      setLine(id, i, { state: "failed", reason: "rejected", opensrs: tucows }, said);
+      await setLine(id, i, { state: "failed", reason: "rejected", opensrs: tucows }, said);
     }
     return;
   }
@@ -230,20 +230,20 @@ async function fulfilLine(id: string, i: number): Promise<void> {
       if (when !== null && when < since) continue;
       const tucows = { ...(line.opensrs ?? {}), order_id: o.id };
       if (o.status === "completed") {
-        setLine(id, i, { state: "registered", registered_at: isoNow(), opensrs: tucows }, `Found Tucows order ${o.id}, completed.`);
+        await setLine(id, i, { state: "registered", registered_at: isoNow(), opensrs: tucows }, `Found Tucows order ${o.id}, completed.`);
         return;
       }
       if (o.status === "pending" || o.status === "waiting" || o.status === "processed") {
-        setLine(id, i, { state: "pending", opensrs: tucows }, `Found Tucows order ${o.id}, ${o.status}.`);
+        await setLine(id, i, { state: "pending", opensrs: tucows }, `Found Tucows order ${o.id}, ${o.status}.`);
         return;
       }
     }
     // No live order of ours. If the name is still free, nothing happened and it is safe to retry.
     const look = await opensrs.lookup(line.domain, true);
     if (look.status === "available") {
-      setLine(id, i, { state: "new" }, "No Tucows order found and the name is still free; will try again.");
+      await setLine(id, i, { state: "new" }, "No Tucows order found and the name is still free; will try again.");
     } else if (look.status === "taken" || look.status === "premium") {
-      setLine(id, i, { state: "failed", reason: "taken" }, "No Tucows order of ours, and the name is now taken.");
+      await setLine(id, i, { state: "failed", reason: "taken" }, "No Tucows order of ours, and the name is now taken.");
     }
     return;
   }
@@ -251,12 +251,12 @@ async function fulfilLine(id: string, i: number): Promise<void> {
   if (line.state === "pending") {
     const tucowsId = line.opensrs?.order_id;
     if (!tucowsId) {
-      setLine(id, i, { state: "unknown" }, "Pending without an order id.");
+      await setLine(id, i, { state: "unknown" }, "Pending without an order id.");
       return;
     }
     const status = await opensrs.orderStatus(tucowsId);
-    if (status === "completed") setLine(id, i, { state: "registered", registered_at: isoNow() }, "Tucows order completed.");
-    else if (status === "declined" || status === "cancelled" || status === "deleted") setLine(id, i, { state: "failed", reason: "rejected" }, `Tucows order ${status}.`);
+    if (status === "completed") await setLine(id, i, { state: "registered", registered_at: isoNow() }, "Tucows order completed.");
+    else if (status === "declined" || status === "cancelled" || status === "deleted") await setLine(id, i, { state: "failed", reason: "rejected" }, `Tucows order ${status}.`);
   }
 }
 
@@ -265,7 +265,7 @@ async function fulfilLine(id: string, i: number): Promise<void> {
 /** When every line is final (or the hold is about to lapse), take the money for what registered
  *  and release the rest, then email the customer and CDR once. */
 async function settle(id: string): Promise<OrderStatus | null> {
-  const order = readOrder(id);
+  const order = await readOrder(id);
   if (!order) return null;
   const states = order.lines.map((l) => l.state);
   const open = states.some((s) => s !== "registered" && s !== "failed");
@@ -274,7 +274,7 @@ async function settle(id: string): Promise<OrderStatus | null> {
 
   if (open && !forced) {
     const status: OrderStatus = states.includes("new") ? "fulfilling" : "pending";
-    if (order.status !== status) updateOrder(id, (o) => { o.status = status; return o; });
+    if (order.status !== status) await updateOrder(id, (o) => { o.status = status; return o; });
     return status;
   }
 
@@ -298,7 +298,7 @@ async function settle(id: string): Promise<OrderStatus | null> {
   if (!ok) {
     const message: string = r.body?.error?.message ?? `HTTP ${r.status}`;
     const first = order.status !== "settle_error";
-    const updated = updateOrder(id, (o) => {
+    const updated = await updateOrder(id, (o) => {
       o.status = "settle_error";
       o.stripe.settle_error = message;
       note(o, "Stripe settle failed: " + message);
@@ -315,7 +315,7 @@ async function settle(id: string): Promise<OrderStatus | null> {
   // A forced settle leaves names Tucows may still complete or decline. The money is already taken,
   // so the order stops being driven automatically and CDR checks it by hand.
   const status: OrderStatus = forced ? "needs_review" : capture === 0 ? "failed" : registered === order.lines.length ? "registered" : "partially_registered";
-  const settled = updateOrder(id, (o) => {
+  const settled = await updateOrder(id, (o) => {
     o.status = status;
     o.stripe.amount_captured = capture;
     o.stripe.settled_at = isoNow();

@@ -36,7 +36,6 @@ const OUT = join(ROOT, "out");
 const ASIDE = join(ROOT, ".export-aside");
 
 const MOVE_ASIDE = [
-  "src/app/api",
   "src/app/assets-manifest.json",
   "src/app/brand-manifest.json",
   "src/app/project-manifest.json",

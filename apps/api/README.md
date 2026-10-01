@@ -21,6 +21,7 @@ src/
   app.ts                 the Express app: one router per feature, 404 and error handling
   core/                  what every feature uses
     config.ts            the settings file (CDR_CONFIG), re-read when it changes
+    db.ts                PostgreSQL: the pool, migrations on first use, 503 when it is down
     http.ts              HttpError, JSON replies, 405s, work that runs after the reply
     visitor.ts           the visitor's IP, country and currency
     rate-limit.ts        per-visitor limits (Tucows agreement 3.2)
@@ -34,7 +35,8 @@ src/
     geo/                 GET /api/geo/
     domain-check/        GET /api/domain-check/
     checkout/            POST /api/checkout/: validation, the order, the Stripe session
-    orders/              the order store, the fulfilment state machine, the emails, GET /api/order-status/
+    orders/              the tables (order.schema.ts), the order store, the fulfilment state machine,
+                         the emails, GET /api/order-status/
     stripe-webhook/      POST /api/stripe-webhook/
     admin/               /api/admin/: routes, HTML views, CSV
     cron/                the sweep and GET /api/cron/
@@ -45,8 +47,10 @@ to Tucows or Stripe directly except through `integrations/`.
 
 ## The rules that matter
 
-- **One process.** Every order change is one synchronous read-change-write, which is safe because a
-  single Node process makes them one at a time. Do not run two copies on the same orders folder.
+- **Orders live in PostgreSQL.** Every order change is one transaction with the order's row locked
+  (`updateOrder`), and one driver per order is a PostgreSQL advisory lock (`withDriveLock`), so
+  concurrent webhooks, polls and sweeps queue up instead of overwriting each other. Change
+  functions stay quick and never call Tucows or Stripe while the row is locked.
 - **Never register twice.** A line is written as `registering` before Tucows is asked. A lost reply
   leaves it `registering` or `unknown`, and the next pass asks Tucows (`GET_ORDERS_BY_DOMAIN`)
   before sending anything again.
@@ -56,6 +60,21 @@ to Tucows or Stripe directly except through `integrations/`.
 - **Test with test, live with live.** A live Tucows account with a test Stripe key, or the reverse,
   keeps checkout shut.
 - **Secrets stay in the settings file.** Never in git, a log, an email or a chat.
+
+## Database
+
+Three tables: `orders`, `order_lines` (one row per domain), `order_log` (each order's history),
+defined in `src/features/orders/order.schema.ts` with Drizzle. The rest of the code works with one
+`Order` object; `order.store.ts` maps it to rows and back.
+
+After changing a schema file:
+
+```
+npm run db:generate          # writes the SQL migration into drizzle/; commit it with the schema
+```
+
+The API applies new migrations itself when it starts (the build copies `drizzle/` to
+`dist/migrations/`). Never edit a migration that has reached the server; add a new one.
 
 ## Settings
 
@@ -67,9 +86,15 @@ npm run geoip                          # the IP database into data/ (set GEOIP_D
 CDR_CONFIG=cdr.env npm run dev         # from apps/api
 ```
 
+Checkout and orders need `DATABASE_URL` pointing at a PostgreSQL database the role can create
+tables in, for example `postgresql://cdr@127.0.0.1:5432/cdr`. Without it the API still serves
+search, and the order endpoints answer 503.
+
 ## Tests
 
 The end-to-end harness lives outside this repository (`research/tools/shop-tests` in the project
-workspace): a stand-in Tucows and Stripe, the library checks, the scenario checks (partial capture,
-all-fail release, async registry, lost reply, promotion, missing webhook, Tucows hold, CAD, amount
-mismatch, emails, admin, CSV, sweep), and a browser walking search to done page.
+workspace): a throwaway PostgreSQL 16, a stand-in Tucows and Stripe, the library checks, the
+scenario checks (partial capture, all-fail release, async registry, lost reply, promotion, missing
+webhook, Tucows hold, CAD, amount mismatch, emails, admin search and CSV, sweep, the rows in the
+tables, eight drivers at once registering each domain exactly once), and a browser walking search
+to done page.
