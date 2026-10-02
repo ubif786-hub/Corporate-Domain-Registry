@@ -198,7 +198,7 @@ async function fulfilLine(id: string, i: number): Promise<void> {
       text: r.text,
       reg_username: r.regUsername,
     };
-    const said = "Tucows replied " + (r.transport ? `${r.code} ${r.text}` : `nothing (${r.error})`) + ".";
+    const said = ("Tucows replied " + (r.transport ? `${r.code} ${r.text}` : `nothing (${r.error})`)).replace(/\.*$/, ".");
 
     if (!r.transport) {
       await setLine(id, i, { state: "unknown", opensrs: tucows }, said + " Will ask Tucows what happened before trying again.");
