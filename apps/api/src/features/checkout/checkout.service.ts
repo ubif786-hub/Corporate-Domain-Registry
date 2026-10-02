@@ -51,6 +51,9 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
 
   const r = await stripe("POST", "/checkout/sessions", {
     mode: "payment",
+    // The client's account has Stripe Managed Payments on by default, which refuses
+    // payment_method_types and makes Stripe the seller. The shop sells as itself, card only.
+    managed_payments: { enabled: "false" },
     payment_method_types: ["card"],
     client_reference_id: id,
     customer_email: registrant.email,

@@ -192,7 +192,7 @@ export function CheckoutForm({
       />
 
       <div>
-        <Button type="submit" variant="primary" aria-disabled={busy || undefined}>
+        <Button type="submit" variant="primary" aria-disabled={busy || !agree || undefined}>
           {busy ? "Checking your domains…" : `Continue to payment, ${total} ${currency}`}
         </Button>
       </div>
