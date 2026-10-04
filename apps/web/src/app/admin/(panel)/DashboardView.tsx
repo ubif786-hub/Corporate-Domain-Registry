@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Download, Information } from "@carbon/icons-react";
+import { ArrowRight, ChartLine, Download, Information } from "@carbon/icons-react";
 import { useApi } from "../lib/api";
 import { ago, money, plural, shortDay, when } from "../lib/format";
 import { useSession } from "../lib/session";
 import type { Balance, Overview } from "../lib/types";
 import { Empty, ErrorNotice, PageHead, Panel, Skel, SkelRows, StatusBadge } from "../ui/bits";
 import { OrdersTable } from "../ui/OrdersTable";
-import { SalesReportPanel } from "./SalesReport";
 
 function compare(now: number, before: number): string {
   if (before === 0) return now === 0 ? "None the 30 days before either" : "None the 30 days before";
@@ -114,9 +113,14 @@ export function DashboardView() {
         title="Dashboard"
         intro={first ? `Welcome back, ${first}. The shop over the last 30 days, in your time zone.` : "The shop over the last 30 days, in your time zone."}
         actions={
-          <a className="adm-chip" href="/api/admin/export.csv" download>
-            <Download size={16} aria-hidden="true" /> Download orders (CSV)
-          </a>
+          <>
+            <Link className="adm-chip" href="/admin/analytics/">
+              <ChartLine size={16} aria-hidden="true" /> Analytics
+            </Link>
+            <a className="adm-chip" href="/api/admin/export.csv" download>
+              <Download size={16} aria-hidden="true" /> Download orders (CSV)
+            </a>
+          </>
         }
       />
 
@@ -157,8 +161,6 @@ export function DashboardView() {
           {data ? <Attention o={data} /> : <SkelRows rows={3} label="Loading" />}
         </Panel>
       </div>
-
-      <SalesReportPanel />
 
       <Panel title="Latest orders" id="latest" action={<Link href="/admin/orders/" style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2xs)" }}>All orders <ArrowRight size={16} aria-hidden="true" /></Link>}>
         {loading && !data ? <SkelRows rows={5} label="Loading orders" /> : null}

@@ -92,7 +92,10 @@ export interface SalesReport {
   test_mode: boolean;
   period: { orders: number; registered: number; renewed: number; failed: number; usd: number; cad: number };
   all: { registered: number; renewed: number; usd: number; cad: number };
-  buyers: { order_id: string; created_at: string; name: string; org: string; email: string; country: string; lines: { domain: string; service: string; state: string; term: number }[] }[];
+  buyers: {
+    order_id: string; created_at: string; name: string; org: string; email: string; phone: string; country: string;
+    lines: { domain: string; service: string; state: string; term: number; expires_at: string | null }[];
+  }[];
   expiring: { domain: string; expires_at: string; name: string; email: string; order_id: string }[];
   renewal_window_days: number;
 }

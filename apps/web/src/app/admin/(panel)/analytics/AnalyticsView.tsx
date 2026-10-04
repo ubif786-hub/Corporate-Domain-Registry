@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { useApi } from "../lib/api";
-import { country, day, money, plural, when } from "../lib/format";
-import type { SalesReport } from "../lib/types";
-import { Empty, ErrorNotice, LineBadge, Panel, SkelRows } from "../ui/bits";
+import { Download } from "@carbon/icons-react";
+import { useApi } from "../../lib/api";
+import { country, day, money, plural, when } from "../../lib/format";
+import type { SalesReport } from "../../lib/types";
+import { Empty, ErrorNotice, LineBadge, PageHead, Panel, SkelRows, useQueryState } from "../../ui/bits";
 
-/* The sales report on the dashboard: the same figures as the report email (GET /api/admin/report),
-   for a period the owner picks. Buyers newest first; the domains coming up for renewal are the
-   people to send the renewal page to. */
+/* Analytics: the sales report for a period the owner picks (GET /api/admin/report), the same
+   figures as the report email, with the buyers and the domains coming up for renewal, each list
+   downloadable for Excel (GET /api/admin/report.csv). The renewal list carries each domain's link
+   to the renewal page, ready for a mailing. */
 
 const PERIODS: { days: number; label: string }[] = [
   { days: 7, label: "7 days" },
@@ -72,7 +73,7 @@ function Buyers({ r }: { r: SalesReport }) {
                   <span className="adm-cell-sub">{b.email}</span>
                 </td>
                 <td className="nowrap">{country(b.country)}</td>
-                <td>
+                <td style={{ minWidth: "18rem" }}>
                   <div className="adm-domains">
                     {b.lines.map((l) => (
                       <span key={l.domain} className="adm-domain">
@@ -130,41 +131,59 @@ function Expiring({ r }: { r: SalesReport }) {
   );
 }
 
-export function SalesReportPanel() {
-  const [days, setDays] = useState(7);
-  const { data, error, loading, reload } = useApi<SalesReport>(`/report?days=${days}`);
+const download = (days: number, list: "buyers" | "renewals", label: string) => (
+  <a className="adm-chip" href={`/api/admin/report.csv?days=${days}&list=${list}`} download>
+    <Download size={16} aria-hidden="true" /> {label}
+  </a>
+);
+
+export function AnalyticsView() {
+  const [f, set, ready] = useQueryState(["days"]);
+  const days = PERIODS.some((p) => String(p.days) === f.days) ? Number(f.days) : 30;
+  const { data, error, loading, reload } = useApi<SalesReport>(ready ? `/report?days=${days}` : null);
   const r = data && data.days === days ? data : null;
 
   return (
-    <Panel
-      title="Sales report"
-      id="report"
-      action={
-        <div className="adm-segments" role="group" aria-label="Period">
-          {PERIODS.map((p) => (
-            <button key={p.days} type="button" className="adm-segment" aria-pressed={days === p.days} onClick={() => setDays(p.days)}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      }
-    >
+    <>
+      <PageHead
+        title="Analytics"
+        intro="Sales for the period you pick: what sold, who bought it, and which domains are due for renewal. The owner also gets this report by email every week."
+        actions={download(days, "buyers", "Download buyers (CSV)")}
+      />
       <ErrorNotice error={error} onRetry={reload} />
-      {r ? (
-        <>
-          <p className="adm-panel-body tight quiet" style={{ margin: 0 }}>
-            {day(r.from)} to {day(r.to)}. The owner also gets this report by email.
-          </p>
-          <Figures r={r} />
-          <div className="adm-subhead"><h3>Buyers</h3></div>
-          <Buyers r={r} />
-          <div className="adm-subhead">
-            <h3>Coming up for renewal, next {r.renewal_window_days} days</h3>
-            <a href="/renew/" target="_blank" rel="noreferrer" className="quiet">The renewal page to send them</a>
+
+      <Panel>
+        <div className="adm-toolbar">
+          <div className="adm-segments" role="group" aria-label="Period">
+            {PERIODS.map((p) => (
+              <button key={p.days} type="button" className="adm-segment" aria-pressed={days === p.days} onClick={() => set({ days: String(p.days) })}>
+                {p.label}
+              </button>
+            ))}
           </div>
-          <Expiring r={r} />
-        </>
-      ) : loading ? <SkelRows rows={4} label="Loading the sales report" /> : null}
-    </Panel>
+          {r ? <span className="quiet" style={{ alignSelf: "center" }}>{day(r.from)} to {day(r.to)}</span> : null}
+        </div>
+        {r ? <Figures r={r} /> : loading ? <SkelRows rows={2} label="Loading the figures" /> : null}
+      </Panel>
+
+      <Panel title={r ? `Buyers (${r.buyers.length})` : "Buyers"} id="buyers">
+        {r ? <Buyers r={r} /> : loading ? <SkelRows rows={4} label="Loading the buyers" /> : null}
+      </Panel>
+
+      <Panel
+        title={`Coming up for renewal, next ${r?.renewal_window_days ?? 90} days`}
+        id="renewals"
+        action={download(days, "renewals", "Download renewal list (CSV)")}
+      >
+        {r ? (
+          <>
+            <p className="adm-panel-body tight quiet" style={{ margin: 0 }}>
+              Send these customers their renewal link: the downloaded list has one for each domain.
+            </p>
+            <Expiring r={r} />
+          </>
+        ) : loading ? <SkelRows rows={3} label="Loading the renewal list" /> : null}
+      </Panel>
+    </>
   );
 }

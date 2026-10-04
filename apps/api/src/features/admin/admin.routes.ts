@@ -19,6 +19,7 @@
 //   GET    /api/admin/customers               ?q= &page=
 //   GET    /api/admin/balance                 the Tucows balance, and the level that sends an alert
 //   GET    /api/admin/report                  ?days=7|30|90|365: the sales report (the same figures as the email)
+//   GET    /api/admin/report.csv              ?days= &list=buyers|renewals: the Analytics page's downloads
 //   GET    /api/admin/team                    the people (owners also get the activity log)
 //   POST   /api/admin/team                    owner: add { name, email, role }, answers a setup link
 //   POST   /api/admin/team/:id/link           owner: a new setup link (first sign-in or reset)
@@ -43,7 +44,7 @@ import {
   addUser, audit, changePassword, completeSetup, countOwners, findUser, findUserByEmail, isEmail, listUsers, markWeak,
   newSetupLink, normaliseEmail, publicUser, recentAudit, renameUser, setDisabled, setRole, userForSetup,
 } from "./admin.accounts";
-import { ordersCsv } from "./admin.csv";
+import { ordersCsv, reportCsv } from "./admin.csv";
 import { burnDecoy, passwordProblem, verifyPassword } from "./admin.password";
 import { attentionCount, customers, domains, overview, summarise, UNPAID } from "./admin.queries";
 import { ADMIN_ROLES, type AdminRole } from "./admin.schema";
@@ -226,11 +227,26 @@ api.get("/balance", async (_req, res) => {
 
 const REPORT_DAYS = [7, 30, 90, 365];
 
-api.get("/report", async (req, res) => {
+const reportDays = (req: Request) => {
   const asked = Number(str(req.query.days));
-  const days = REPORT_DAYS.includes(asked) ? asked : 7;
+  return REPORT_DAYS.includes(asked) ? asked : 7;
+};
+
+api.get("/report", async (req, res) => {
+  const days = reportDays(req);
   const now = Date.now();
   res.json({ days, ...(await reportData(config(), now - days * 86_400_000, now)) });
+});
+
+api.get("/report.csv", async (req, res) => {
+  const days = reportDays(req);
+  const list = str(req.query.list) === "renewals" ? "renewals" : "buyers";
+  const now = Date.now();
+  const report = await reportData(config(), now - days * 86_400_000, now);
+  await audit("report_exported", me(req).user.id, ip(req), { list, days });
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="cdr-${list === "renewals" ? "renewal-list" : `buyers-${days}-days`}-${new Date(now).toISOString().slice(0, 10)}.csv"`);
+  res.send(reportCsv(report, list, config().siteUrl));
 });
 
 /* ---------- the team ---------- */

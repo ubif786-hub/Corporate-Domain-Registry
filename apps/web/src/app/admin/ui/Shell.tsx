@@ -7,7 +7,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Close, Dashboard, Download, Earth, Launch, Logout, Menu, ShoppingCart, UserAvatar, UserMultiple, Group,
+  ChartLine, Close, Dashboard, Download, Earth, Launch, Logout, Menu, ShoppingCart, UserAvatar, UserMultiple, Group,
 } from "@carbon/icons-react";
 import { CdrLockup } from "@/app/(site)/CdrLogo";
 import { useRegion } from "@/app/(site)/RegionProvider";
@@ -42,6 +42,7 @@ function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate?: (
     { href: "/admin/orders/", label: "Orders", icon: <ShoppingCart size={20} aria-hidden="true" />, count: me?.attention || undefined },
     { href: "/admin/domains/", label: "Domains", icon: <Earth size={20} aria-hidden="true" /> },
     { href: "/admin/customers/", label: "Customers", icon: <UserMultiple size={20} aria-hidden="true" /> },
+    { href: "/admin/analytics/", label: "Analytics", icon: <ChartLine size={20} aria-hidden="true" /> },
   ];
   const you: NavItem[] = [
     { href: "/admin/team/", label: "Team", icon: <Group size={20} aria-hidden="true" /> },

@@ -2,6 +2,7 @@
 
 import { plainAmount } from "../../core/money";
 import type { Order } from "../orders/order.types";
+import type { SalesReport } from "../reports/reports.service";
 
 const HEADER = ["order", "created_utc", "order_status", "test", "domain", "type", "years", "domain_status", "expires_utc", "price", "currency", "order_total", "discount", "charged", "tucows_order", "first_name", "last_name", "organisation", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country", "ca_legal_type", "ordered_from_ip", "stripe_payment"];
 
@@ -35,6 +36,24 @@ export function ordersCsv(orders: Order[]): string {
         o.registrant_ip ?? "",
         s.payment_intent ?? "",
       ]);
+    }
+  }
+  return out;
+}
+
+/** The Analytics page's downloads. buyers: one row per domain ordered in the period. renewals: the
+ *  domains coming up for renewal, each with its link to the renewal page, for a mailing. */
+export function reportCsv(r: SalesReport, list: "buyers" | "renewals", siteUrl: string): string {
+  if (list === "renewals") {
+    let out = "﻿" + ["domain", "expires_utc", "name", "email", "order", "renewal_link"].map(cell).join(",") + "\n";
+    for (const e of r.expiring) out += row([e.domain, e.expires_at, e.name, e.email, e.order_id, `${siteUrl}/renew/?domain=${encodeURIComponent(e.domain)}`]);
+    return out;
+  }
+  let out = "﻿" + ["ordered_utc", "order", "name", "organisation", "email", "phone", "country", "domain", "type", "result", "years", "expires_utc"].map(cell).join(",") + "\n";
+  for (const b of r.buyers) {
+    for (const l of b.lines) {
+      const result = l.state === "registered" ? (l.service === "renew" ? "renewed" : "registered") : l.state === "failed" ? "not completed" : "in progress";
+      out += row([b.created_at, b.order_id, b.name, b.org, b.email, b.phone, b.country, l.domain, l.service === "renew" ? "renewal" : "registration", result, l.term, l.state === "registered" ? l.expires_at ?? "" : ""]);
     }
   }
   return out;

@@ -51,6 +51,7 @@ export const AUDIT_ACTION: Record<string, string> = {
   user_enabled: "Turned a person's access back on",
   order_driven: "Ran an order's next step",
   csv_exported: "Downloaded the orders spreadsheet",
+  report_exported: "Downloaded an analytics list",
   sessions_revoked: "Signed out other browsers",
   password_set: "Set a password from the server",
 };

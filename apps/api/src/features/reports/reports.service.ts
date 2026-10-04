@@ -109,7 +109,10 @@ export interface SalesReport {
   period: { orders: number; registered: number; renewed: number; failed: number; usd: number; cad: number };
   all: { registered: number; renewed: number; usd: number; cad: number };
   /** Paid orders in the period, oldest first. */
-  buyers: { order_id: string; created_at: string; name: string; org: string; email: string; country: string; lines: { domain: string; service: string; state: string; term: number }[] }[];
+  buyers: {
+    order_id: string; created_at: string; name: string; org: string; email: string; phone: string; country: string;
+    lines: { domain: string; service: string; state: string; term: number; expires_at: string | null }[];
+  }[];
   /** Domains sold or renewed here whose latest known expiry falls in the next RENEWAL_WINDOW_DAYS. */
   expiring: { domain: string; expires_at: string; name: string; email: string; order_id: string }[];
   renewal_window_days: number;
@@ -143,7 +146,8 @@ export async function reportData(c: Config, since: number, now: number): Promise
   const buyers = (await d.execute(sql`
     select o.id, o.created_at, o.email, trim(concat_ws(' ', o.registrant->>'first_name', o.registrant->>'last_name')) as name,
       coalesce(o.registrant->>'org_name', '') as org, coalesce(o.registrant->>'country', '') as country,
-      json_agg(json_build_object('domain', l.domain, 'service', l.service, 'state', l.state, 'term', l.term) order by l.position) as lines
+      coalesce(o.registrant->>'phone', '') as phone,
+      json_agg(json_build_object('domain', l.domain, 'service', l.service, 'state', l.state, 'term', l.term, 'expires_at', l.expires_at) order by l.position) as lines
     from orders o join order_lines l on l.order_id = o.id
     where ${paid} ${inPeriod}
     group by o.id order by o.created_at
@@ -172,8 +176,11 @@ export async function reportData(c: Config, since: number, now: number): Promise
     all: { registered: num(totalLines.registered), renewed: num(totalLines.renewed), usd: num(total.usd), cad: num(total.cad) },
     buyers: buyers.map((r) => ({
       order_id: String(r.id), created_at: isoOf(r.created_at), name: String(r.name ?? ""), org: String(r.org ?? ""),
-      email: String(r.email ?? ""), country: String(r.country ?? ""),
-      lines: ((r.lines as Row[]) ?? []).map((l) => ({ domain: String(l.domain), service: String(l.service), state: String(l.state), term: num(l.term) })),
+      email: String(r.email ?? ""), phone: String(r.phone ?? ""), country: String(r.country ?? ""),
+      lines: ((r.lines as Row[]) ?? []).map((l) => ({
+        domain: String(l.domain), service: String(l.service), state: String(l.state), term: num(l.term),
+        expires_at: l.expires_at ? isoOf(l.expires_at) : null,
+      })),
     })),
     expiring: expiring.map((r) => ({ domain: String(r.domain), expires_at: isoOf(r.expires_at), name: String(r.name ?? ""), email: String(r.email ?? ""), order_id: String(r.order_id) })),
     renewal_window_days: RENEWAL_WINDOW_DAYS,
