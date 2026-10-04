@@ -16,6 +16,11 @@ export function termWords(term: number): string {
   return term + (term === 1 ? " year" : " years");
 }
 
+/** "12 March 2028" */
+export function dayWords(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
 function reasonWords(reason: FailReason | undefined): string {
   switch (reason) {
     case "taken": return "someone else registered it first";
@@ -39,11 +44,14 @@ export function orderSummary(o: Order): string {
   out.push("");
   for (const l of o.lines) {
     const tid = l.opensrs?.order_id ? ", Tucows order " + l.opensrs.order_id : "";
-    out.push(`- ${l.domain}, ${termWords(l.term)}, ${money(l.amount_cents, o.currency)}: ${l.state.toUpperCase()}${l.reason ? ` (${l.reason})` : ""}${tid}`);
+    const state = l.service === "renew" && l.state === "registered" ? "RENEWED" : l.state.toUpperCase();
+    const until = l.state === "registered" && l.expires_at ? `, expires ${l.expires_at.slice(0, 10)}` : "";
+    out.push(`- ${l.domain}, ${l.service === "renew" ? "renewal " : ""}${termWords(l.term)}, ${money(l.amount_cents, o.currency)}: ${state}${l.reason ? ` (${l.reason})` : ""}${tid}${until}`);
   }
   out.push("");
   out.push("Registrant:");
   out.push(`${r.first_name} ${r.last_name}` + (r.org_name !== "" ? ", " + r.org_name : ""));
+  if (r.ca_legal_type) out.push(".ca legal type: " + r.ca_legal_type);
   out.push(r.address1 + (r.address2 !== "" ? ", " + r.address2 : ""));
   out.push(r.city + (r.state !== "" ? ", " + r.state : "") + " " + r.postal_code + ", " + r.country);
   out.push(r.email + ", " + r.phone);
@@ -62,7 +70,9 @@ export async function notifyCheck(o: Order, subject: string, why: string): Promi
 export async function sendFinalEmails(o: Order): Promise<void> {
   if (o.notified_final) return;
   const c = config();
-  const registered = o.lines.filter((l) => l.state === "registered");
+  const done = o.lines.filter((l) => l.state === "registered");
+  const registered = done.filter((l) => l.service === "register");
+  const renewed = done.filter((l) => l.service === "renew");
   const failed = o.lines.filter((l) => l.state === "failed");
   const waiting = o.lines.filter((l) => l.state !== "registered" && l.state !== "failed");
   const captured = o.stripe.amount_captured ?? 0;
@@ -70,9 +80,15 @@ export async function sendFinalEmails(o: Order): Promise<void> {
   // To the customer, in plain words.
   const b: string[] = [];
   b.push(`Hi ${o.registrant.first_name},`, "");
+  if (done.length) b.push("Thank you for your order.");
   if (registered.length) {
-    b.push("Thank you for your order. " + (registered.length === 1 ? "This domain is now registered to you:" : "These domains are now registered to you:"));
+    b.push(registered.length === 1 ? "This domain is now registered to you:" : "These domains are now registered to you:");
     for (const l of registered) b.push(`  ${l.domain} (${termWords(l.term)})`);
+    b.push("");
+  }
+  if (renewed.length) {
+    b.push(renewed.length === 1 ? "This domain is renewed:" : "These domains are renewed:");
+    for (const l of renewed) b.push(`  ${l.domain} (${termWords(l.term)} more` + (l.expires_at ? `, now runs until ${dayWords(l.expires_at)})` : ")"));
     b.push("");
   }
   if (waiting.length) {
@@ -81,7 +97,7 @@ export async function sendFinalEmails(o: Order): Promise<void> {
     b.push("We will email you if anything changes.", "");
   }
   if (failed.length) {
-    b.push(registered.length ? "We could not register:" : "We are sorry, we could not register your order:");
+    b.push(done.length ? "We could not complete:" : "We are sorry, we could not complete your order:");
     for (const l of failed) b.push(`  ${l.domain} (${reasonWords(l.reason)})`);
     b.push("You are not charged for " + (failed.length === 1 ? "it" : "these") + ".", "");
   }
@@ -92,7 +108,7 @@ export async function sendFinalEmails(o: Order): Promise<void> {
     b.push("", "Our registry partner, Tucows (OpenSRS), may send you an email asking you to confirm your contact details. Please answer it within 15 days, or the domain can be suspended.");
   }
   b.push("", "Order number: " + o.id, `Questions? Reply to this email or write to ${c.notifyEmail}.`, "", "Corporate Domain Registry", c.siteUrl);
-  const subject = registered.length ? `Your domain order ${o.id} is complete` : `Your domain order ${o.id} could not be completed`;
+  const subject = done.length ? `Your domain order ${o.id} is complete` : `Your domain order ${o.id} could not be completed`;
   await sendMail(o.registrant.email, subjectPrefix(o) + subject, b.join("\n") + "\n");
 
   // To CDR.

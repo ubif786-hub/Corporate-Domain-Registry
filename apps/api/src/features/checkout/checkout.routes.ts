@@ -1,12 +1,14 @@
 // POST /api/checkout/ — the registrant form and the cart in, a Stripe Checkout URL out.
 //
-// The page sends JSON: { items: [{domain, term}], registrant: {...}, agree }.
+// The page sends JSON: { items: [{domain, term, service}], registrant: {...}, agree, ca_agree }.
+// service is "register" (the default) or "renew"; ca_agree comes with a .ca registration.
 //
 // Every line is priced here from the catalogue, in the visitor's currency: CAD in Canada, USD
 // everywhere else, decided from the same IP database as the header chip.
 //
 // EVERY DOMAIN IS CHECKED AGAIN, straight at the registry (no cache), before Stripe is asked. A name
-// that went while it sat in the cart is refused here, before any card is touched.
+// that went while it sat in the cart is refused here, before any card is touched. A renewal is
+// checked against CDR's Tucows account, and its expiry date is kept for the renewal itself.
 
 import express, { Router } from "express";
 import { currencyForCountry, type CheckoutResponse } from "@cdr/shared";
@@ -15,8 +17,9 @@ import { allow, HttpError, sendJson } from "../../core/http";
 import { rateLimited } from "../../core/rate-limit";
 import { visitorCountry, visitorIp } from "../../core/visitor";
 import { lookup } from "../../integrations/opensrs/client";
+import { checkRenewal } from "../renew/renew.service";
 import { startCheckout } from "./checkout.service";
-import { validateCart, validateRegistrant } from "./checkout.validation";
+import { validateCa, validateCart, validateRegistrant } from "./checkout.validation";
 
 export const checkoutRouter = Router();
 
@@ -38,22 +41,34 @@ checkoutRouter.all(
     const currency = currencyForCountry(country);
     const cart = validateCart(input.items, currency, c.cadRate);
     const { registrant, errors } = validateRegistrant(input.registrant, input.agree);
+    if (cart.lines.some((l) => l.service === "register" && l.domain.endsWith(".ca"))) validateCa(registrant, input.registrant, input.ca_agree, errors);
     if (Object.keys(errors).length || Object.keys(cart.lineErrors).length) {
       throw new HttpError(422, "invalid", "Some details need attention.", { fields: errors, lines: cart.lineErrors });
     }
     if (!cart.lines.length) throw new HttpError(422, "empty_cart", "Your cart is empty.");
 
-    // The final availability check, at the registry.
+    // The final check, at the registry.
     const unavailable: Record<string, string> = {};
+    const down = () => new HttpError(503, "registry_unavailable", "We could not confirm your domains with the registry just now. Nothing was charged; please try again in a moment.");
     for (const [n, line] of cart.lines.entries()) {
-      const look = await lookup(line.domain, true);
-      if (look.status === "error") {
-        throw new HttpError(503, "registry_unavailable", "We could not confirm availability with the registry just now. Nothing was charged; please try again in a moment.");
+      const at = cart.positions[n];
+      if (line.service === "renew") {
+        const r = await checkRenewal(line.domain);
+        if (r.status === "error") throw down();
+        if (r.status === "not_ours") unavailable[at] = "We can only renew domains registered with us. Remove it from your cart to continue.";
+        else if (line.term > r.max_term) {
+          unavailable[at] = r.max_term > 0
+            ? `This domain can be renewed for at most ${r.max_term} ${r.max_term === 1 ? "year" : "years"} now. Change the duration in your cart.`
+            : "This domain is already renewed as far ahead as the registry allows.";
+        } else line.expires_at = r.expires_at;
+        continue;
       }
-      if (look.status !== "available") unavailable[cart.positions[n]] = "This domain is no longer available. Remove it from your cart to continue.";
+      const look = await lookup(line.domain, true);
+      if (look.status === "error") throw down();
+      if (look.status !== "available") unavailable[at] = "This domain is no longer available. Remove it from your cart to continue.";
     }
     if (Object.keys(unavailable).length) {
-      throw new HttpError(422, "unavailable", "A domain in your cart is no longer available.", { fields: {}, lines: unavailable });
+      throw new HttpError(422, "unavailable", "A domain in your cart cannot be ordered.", { fields: {}, lines: unavailable });
     }
 
     const out: CheckoutResponse = await startCheckout({ config: c, currency, lines: cart.lines, registrant, ip, country });

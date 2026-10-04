@@ -165,6 +165,8 @@ export async function register(domain: string, period: number, registrant: Check
     custom_tech_contact: 0,
     contact_set: { owner: contact, admin: contact, billing: contact },
   };
+  // CIRA's Canadian presence class (research/opensrs/tld.md, .CA).
+  if (domain.endsWith(".ca")) attrs.registrant_extra_info = { legal_type: registrant.ca_legal_type ?? "" };
   if (c.opensrsNameservers.length >= 2) {
     attrs.custom_nameservers = 1;
     attrs.nameserver_list = c.opensrsNameservers.map((name, i) => ({ name, sortorder: i + 1 }));
@@ -200,6 +202,42 @@ export async function ordersFor(domain: string): Promise<TucowsOrder[] | null> {
     out.push({ id: str(rec.id), status: str(rec.status).toLowerCase(), type: str(rec.type), date: str(rec.order_date) });
   }
   return out.sort((a, b) => Number(b.id) - Number(a.id));
+}
+
+/** "2027-03-12 06:48:18" (Tucows' expiry dates, UTC) -> ISO, or null. */
+function tucowsExpiry(s: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?/.exec(s.trim());
+  if (!m) return null;
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0))).toISOString();
+}
+
+/**
+ * Is the domain in this reseller account, and when does it expire? GET DOMAIN (type all_info)
+ * answers only for the account's own domains, while active or in the grace period after expiry
+ * (research/opensrs/get-domain.md). Any other refusal means it is not ours to renew.
+ */
+export async function domainExpiry(domain: string): Promise<{ status: "ours"; expires_at: string } | { status: "not_ours" } | { status: "error" }> {
+  const r = await call("GET", { domain, type: "all_info" }, "DOMAIN", 20);
+  if (!r.transport || r.code === 400 || r.code >= 500) return { status: "error" };
+  if (r.code !== 200) return { status: "not_ours" };
+  const expires = tucowsExpiry(str(r.attributes.expiredate));
+  return expires ? { status: "ours", expires_at: expires } : { status: "error" };
+}
+
+/**
+ * RENEW one domain, handle=process. currentexpirationyear must match the registry, so a renewal
+ * that already went through makes a repeat fail instead of adding a second term
+ * (research/opensrs/renew.md). Never retried here: the caller checks the expiry first.
+ */
+export async function renew(domain: string, currentExpiryYear: number, period: number): Promise<OpsResult & { expires_at: string | null }> {
+  const r = await call("RENEW", {
+    domain,
+    currentexpirationyear: currentExpiryYear,
+    period: Math.trunc(period),
+    handle: "process",
+    auto_renew: 0,
+  }, "DOMAIN", 60);
+  return { ...r, expires_at: tucowsExpiry(str(r.attributes["registration expiration date"])) };
 }
 
 /** The reseller balance in USD, or null. Used by the admin page's header line. */

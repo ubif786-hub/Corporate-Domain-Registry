@@ -59,7 +59,7 @@ export function OrdersTable({ orders, caption, showTest = true }: { orders: Orde
                     {o.lines.map((l) => (
                       <div key={l.domain} className="adm-domain">
                         <span className="mono">{l.domain}</span>
-                        {o.lines.length > 1 || l.state !== "registered" ? <LineBadge state={l.state} /> : null}
+                        {o.lines.length > 1 || l.state !== "registered" ? <LineBadge state={l.state} service={l.service} /> : null}
                       </div>
                     ))}
                   </div>

@@ -136,10 +136,13 @@
 /* ---------- panels ---------- */
 
 .adm-panel { background: var(--background-positive-primary); border: var(--rule-weight) solid var(--border-positive-secondary); min-width: 0; }
-.adm-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-bottom: var(--rule-weight) solid var(--border-positive-secondary); }
+.adm-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-bottom: var(--rule-weight) solid var(--border-positive-secondary); }
 .adm-panel-head h2 { margin: 0; font-family: var(--font-display); font-size: var(--type-lg); font-weight: var(--heading-weight-title, var(--weight-medium)); line-height: var(--leading-snug); }
 .adm-panel-head a { font-size: var(--type-sm); }
 .adm-panel-body { padding: var(--space-lg); }
+.adm-subhead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2xs) var(--space-sm); padding: var(--space-md) var(--space-lg) var(--space-xs); border-top: var(--rule-weight) solid var(--border-positive-secondary); }
+.adm-subhead h3 { margin: 0; font-family: var(--font-display); font-size: var(--type-md); font-weight: var(--weight-medium); }
+.adm-subhead a { font-size: var(--type-sm); }
 .adm-panel-body.tight { padding: var(--space-md) var(--space-lg); }
 .adm-split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(20rem, 1fr); gap: var(--space-lg); align-items: start; }
 .adm-stack { display: flex; flex-direction: column; gap: var(--space-lg); min-width: 0; }

@@ -15,6 +15,13 @@
       "when": 1790889190944,
       "tag": "0001_admin_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791088034770,
+      "tag": "0002_renewals_and_notices",
+      "breakpoints": true
     }
   ]
 }

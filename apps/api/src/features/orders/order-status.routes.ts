@@ -47,7 +47,7 @@ orderStatusRouter.all("/api/order-status", allow("GET"), async (req, res) => {
     order: order.id,
     status: order.status,
     currency: order.currency.toUpperCase(),
-    lines: order.lines.map((l) => ({ domain: l.domain, term: l.term, state: l.state })),
+    lines: order.lines.map((l) => ({ domain: l.domain, term: l.term, state: l.state, service: l.service })),
     charged: order.stripe.amount_captured !== undefined ? order.stripe.amount_captured / 100 : null,
     email: order.registrant.email,
   };

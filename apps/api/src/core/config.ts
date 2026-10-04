@@ -18,6 +18,12 @@ export interface Config {
   stripeWebhookSecret: string;
   siteUrl: string;
   notifyEmail: string;
+  /** The owner's notices: the low Tucows balance alert and the report. Empty: NOTIFY_EMAIL. */
+  alertEmail: string;
+  /** Alert when the Tucows balance (USD) falls below this. */
+  lowBalanceUsd: number;
+  /** Days between reports; 0 turns the report off. */
+  reportDays: number;
   fromEmail: string;
   /** resend: Resend's HTTPS API (DigitalOcean blocks mail ports); file: an outbox folder beside
    *  the orders, for local proof; log: one line per email to the process log, no body. */
@@ -58,11 +64,16 @@ function parse(raw: Record<string, string | undefined>): Config {
   }
   const transport = clean(raw.MAIL_TRANSPORT);
   const cadRate = Number(clean(raw.CAD_RATE) || "1");
+  const lowBalance = Number(clean(raw.LOW_BALANCE_USD) || "50");
+  const reportDays = Number(clean(raw.REPORT_DAYS) || "7");
   return {
     stripeSecretKey: clean(raw.STRIPE_SECRET_KEY),
     stripeWebhookSecret: clean(raw.STRIPE_WEBHOOK_SECRET),
     siteUrl,
     notifyEmail: clean(raw.NOTIFY_EMAIL),
+    alertEmail: clean(raw.ALERT_EMAIL) || clean(raw.NOTIFY_EMAIL),
+    lowBalanceUsd: Number.isFinite(lowBalance) && lowBalance >= 0 ? lowBalance : 50,
+    reportDays: Number.isInteger(reportDays) && reportDays >= 0 ? reportDays : 7,
     fromEmail,
     mailTransport: transport === "resend" || transport === "log" ? transport : "file",
     resendApiKey: clean(raw.RESEND_API_KEY),

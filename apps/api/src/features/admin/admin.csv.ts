@@ -3,7 +3,7 @@
 import { plainAmount } from "../../core/money";
 import type { Order } from "../orders/order.types";
 
-const HEADER = ["order", "created_utc", "order_status", "test", "domain", "years", "domain_status", "price", "currency", "order_total", "discount", "charged", "tucows_order", "first_name", "last_name", "organisation", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country", "ordered_from_ip", "stripe_payment"];
+const HEADER = ["order", "created_utc", "order_status", "test", "domain", "type", "years", "domain_status", "expires_utc", "price", "currency", "order_total", "discount", "charged", "tucows_order", "first_name", "last_name", "organisation", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country", "ca_legal_type", "ordered_from_ip", "stripe_payment"];
 
 // A cell starting with = + - @ would run as a formula in a spreadsheet.
 const safe = (v: unknown) => {
@@ -25,12 +25,13 @@ export function ordersCsv(orders: Order[]): string {
     for (const l of o.lines) {
       out += row([
         o.id, o.created_at, o.status, o.test_mode ? "yes" : "no",
-        l.domain, l.term, l.state, plainAmount(l.amount_cents), o.currency.toUpperCase(),
+        l.domain, l.service === "renew" ? "renewal" : "registration", l.term, l.state, l.state === "registered" ? l.expires_at ?? "" : "",
+        plainAmount(l.amount_cents), o.currency.toUpperCase(),
         plainAmount(o.subtotal_cents),
         s.amount_discount !== undefined ? plainAmount(s.amount_discount) : "",
         s.amount_captured !== undefined ? plainAmount(s.amount_captured) : "",
         l.opensrs?.order_id ?? "",
-        r.first_name, r.last_name, r.org_name, r.email, r.phone, r.address1, r.address2, r.city, r.state, r.postal_code, r.country,
+        r.first_name, r.last_name, r.org_name, r.email, r.phone, r.address1, r.address2, r.city, r.state, r.postal_code, r.country, r.ca_legal_type ?? "",
         o.registrant_ip ?? "",
         s.payment_intent ?? "",
       ]);

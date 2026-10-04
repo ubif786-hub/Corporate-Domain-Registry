@@ -89,6 +89,7 @@ function lineRows(o: Order): (typeof orderLines.$inferInsert)[] {
     attempts: l.attempts ?? 0,
     attemptedAt: toDate(l.attempted_at),
     registeredAt: toDate(l.registered_at),
+    expiresAt: toDate(l.expires_at),
     reason: l.reason ?? null,
     opensrs: l.opensrs ?? null,
     opensrsOrderId: l.opensrs?.order_id ?? null,
@@ -119,6 +120,7 @@ function lineFromRow(r: typeof orderLines.$inferSelect): OrderLine {
   };
   if (r.attemptedAt) l.attempted_at = isoNow(r.attemptedAt);
   if (r.registeredAt) l.registered_at = isoNow(r.registeredAt);
+  if (r.expiresAt) l.expires_at = isoNow(r.expiresAt);
   if (r.reason) l.reason = r.reason;
   if (r.opensrs) l.opensrs = r.opensrs;
   return l;

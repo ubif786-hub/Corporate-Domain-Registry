@@ -12,6 +12,7 @@ import { Select } from "@/components/Select";
 import { TextField } from "@/components/TextField";
 import { AGREEMENT } from "@/data/legal/agreement";
 import catalog from "@cdr/shared/catalog.json";
+import { CA_LEGAL_TYPES } from "@cdr/shared";
 import type { CartItem } from "../CartProvider";
 
 /* The registrant form, then Stripe (PROJECT.md decision 12 D3). OpenSRS will not register a domain
@@ -25,7 +26,14 @@ import type { CartItem } from "../CartProvider";
  * charges that, so a tampered cart can change nothing but which domains are ordered. It also asks
  * the registry once more; a domain that went while it sat in the cart comes back as a line error,
  * shown here with a button that takes it out of the cart.
+ *
+ * A .CA REGISTRATION ASKS CIRA'S QUESTIONS: how the registrant has a Canadian presence (the legal
+ * type Tucows passes to the registry), and their confirmation of CIRA's rules and agreement. The
+ * API refuses a .ca without them, or with an address outside Canada, before any card is touched.
  */
+
+const CIRA_PRESENCE = "https://www.cira.ca/en/resources/documents/domains/canadian-presence-requirements-registrants/";
+const CIRA_AGREEMENT = "https://www.cira.ca/en/resources/documents/domains/registrant-agreement/";
 
 type Fields = Record<string, string>;
 
@@ -55,6 +63,10 @@ export function CheckoutForm({
   const [errors, setErrors] = useState<Fields>({});
   const [lineErrors, setLineErrors] = useState<Fields>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const hasCa = items.some((i) => i.service === "register" && i.domain.endsWith(".ca"));
+  const [caType, setCaType] = useState("");
+  const [caAgree, setCaAgree] = useState(false);
+  const caOrg = CA_LEGAL_TYPES.find((t) => t.code === caType)?.org ?? false;
 
   // Canada and the United States first (the two markets on /contact), then everyone by name.
   const countries = useMemo(() => {
@@ -72,10 +84,12 @@ export function CheckoutForm({
     const value = (k: string) => String(form.get(k) ?? "");
     const registrant: Fields = {};
     for (const k of ["first_name", "last_name", "org_name", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country"]) registrant[k] = value(k);
+    if (hasCa) registrant.ca_legal_type = caType;
     const body = {
-      items: items.map((i) => ({ domain: i.domain, term: i.term })),
+      items: items.map((i) => ({ domain: i.domain, term: i.term, service: i.service })),
       registrant,
       agree,
+      ca_agree: hasCa ? caAgree : undefined,
     };
     setBusy(true);
     setProblem(null);
@@ -139,7 +153,15 @@ export function CheckoutForm({
           <Column span={1}><TextField id="co-first" name="first_name" label="First name" autoComplete="given-name" required error={errors.first_name} /></Column>
           <Column span={1}><TextField id="co-last" name="last_name" label="Last name" autoComplete="family-name" required error={errors.last_name} /></Column>
         </Row>
-        <TextField id="co-org" name="org_name" label="Organisation" autoComplete="organization" helper="Leave blank for a personal registration." error={errors.org_name} />
+        <TextField
+          id="co-org"
+          name="org_name"
+          label="Organisation"
+          autoComplete="organization"
+          required={caOrg}
+          helper={caOrg ? "The organisation's legal name: the .ca is registered to it." : "Leave blank for a personal registration."}
+          error={errors.org_name}
+        />
         <Row cols={{ mobile: 1, tablet: 2, desktop: 2 }} gap="md">
           <Column span={1}><TextField id="co-email" name="email" type="email" label="Email" autoComplete="email" required error={errors.email} /></Column>
           <Column span={1}><TextField id="co-phone" name="phone" type="tel" label="Phone" autoComplete="tel" helper="With the country code, for example +1 416 555 0123." required error={errors.phone} /></Column>
@@ -157,6 +179,7 @@ export function CheckoutForm({
           required
           value={country}
           onChange={(e) => setCountry(e.currentTarget.value)}
+          helper={hasCa ? "A .ca domain needs a Canadian address." : undefined}
           error={errors.country}
         />
         <TextField id="co-address1" name="address1" label="Street address" autoComplete="address-line1" required error={errors.address1} />
@@ -178,6 +201,45 @@ export function CheckoutForm({
         </Row>
       </FormGroup>
 
+      {hasCa ? (
+        <FormGroup
+          legend=".ca requirements"
+          description="The Canadian registry (CIRA) registers .ca domains only to people and organisations with a Canadian presence."
+        >
+          <Select
+            id="co-ca-type"
+            name="ca_legal_type"
+            label="The registrant is"
+            placeholder="Choose one"
+            options={[...CA_LEGAL_TYPES.map((t) => ({ value: t.code, label: t.label })), { value: "none", label: "None of these" }]}
+            required
+            value={caType}
+            onChange={(e) => setCaType(e.currentTarget.value)}
+            error={errors.ca_legal_type}
+          />
+          {caType === "none" ? (
+            <CalloutCard
+              tone="warning"
+              title="A .ca domain cannot be registered without a Canadian presence"
+              body="Remove the .ca domain from your cart to order the rest. Nothing has been charged."
+            />
+          ) : null}
+          <Checkbox
+            id="co-ca-agree"
+            checked={caAgree}
+            onChange={setCaAgree}
+            required
+            error={errors.ca_agree}
+            label={
+              <>
+                The registrant meets CIRA&rsquo;s <a href={CIRA_PRESENCE} target="_blank" rel="noreferrer" style={linkStyle}>Canadian presence requirements</a> and
+                accepts the <a href={CIRA_AGREEMENT} target="_blank" rel="noreferrer" style={linkStyle}>CIRA registrant agreement</a>.
+              </>
+            }
+          />
+        </FormGroup>
+      ) : null}
+
       <Checkbox
         id="co-agree"
         checked={agree}
@@ -192,14 +254,14 @@ export function CheckoutForm({
       />
 
       <div>
-        <Button type="submit" variant="primary" aria-disabled={busy || !agree || undefined}>
+        <Button type="submit" variant="primary" aria-disabled={busy || !agree || (hasCa && (!caAgree || caType === "none")) || undefined}>
           {busy ? "Checking your domains…" : `Continue to payment, ${total} ${currency}`}
         </Button>
       </div>
 
       <p style={noteStyle}>
         You pay on Stripe&rsquo;s secure page, in {currency}; this site never sees your card. Your card is
-        only charged once your domains are registered, and only for the ones that register. Have a promo
+        only charged once your domains are registered or renewed, and only for the ones that go through. Have a promo
         code? Enter it on the payment page.
       </p>
     </form>

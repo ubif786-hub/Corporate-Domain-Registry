@@ -67,12 +67,14 @@ export function DomainsView() {
                     <tr key={`${r.order_id}-${r.domain}`}>
                       <td className="dom">
                         <span className="mono strong">{r.domain}</span>
+                        {r.service === "renew" ? <span className="adm-cell-sub">Renewal</span> : null}
                         {r.tucows_order ? <span className="adm-cell-sub">Tucows <span className="mono">{r.tucows_order}</span></span> : null}
                       </td>
                       <td>
-                        <LineBadge state={r.state} />
+                        <LineBadge state={r.state} service={r.service} />
                         {r.reason ? <span className="adm-cell-sub">{FAIL_REASON[r.reason] ?? r.reason}</span> : null}
                         {r.registered_at ? <span className="adm-cell-sub" title={when(r.registered_at)}>{day(r.registered_at)}</span> : null}
+                        {r.state === "registered" && r.expires_at ? <span className="adm-cell-sub">Expires {day(r.expires_at)}</span> : null}
                       </td>
                       <td className="nowrap">{years(r.term)}</td>
                       <td className="num">{money(r.amount_cents, r.currency)}</td>
@@ -94,7 +96,7 @@ export function DomainsView() {
                 <Link key={`${r.order_id}-${r.domain}`} href={`/admin/orders/view/?id=${r.order_id}`} className="adm-card-row">
                   <div className="adm-card-top">
                     <span className="mono strong" style={{ overflowWrap: "anywhere", minWidth: 0 }}>{r.domain}</span>
-                    <LineBadge state={r.state} />
+                    <LineBadge state={r.state} service={r.service} />
                   </div>
                   <div className="adm-card-meta">
                     <span>{r.name}</span>

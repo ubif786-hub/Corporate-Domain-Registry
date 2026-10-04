@@ -16,7 +16,7 @@ export interface OrderSummary {
   org: string;
   email: string;
   country: string;
-  lines: { domain: string; state: string; term: number }[];
+  lines: { domain: string; state: string; term: number; service: string }[];
 }
 
 export interface Overview {
@@ -36,11 +36,12 @@ export interface OrderList { orders: OrderSummary[]; total: number; page: number
 export interface Registrant {
   first_name: string; last_name: string; org_name: string; email: string; phone: string;
   address1: string; address2: string; city: string; state: string; postal_code: string; country: string;
+  ca_legal_type?: string;
 }
 
 export interface OrderLine {
-  domain: string; label: string; term: number; amount_cents: number; state: string; attempts: number;
-  attempted_at?: string; registered_at?: string; reason?: string;
+  domain: string; service: string; label: string; term: number; amount_cents: number; state: string; attempts: number;
+  attempted_at?: string; registered_at?: string; expires_at?: string; reason?: string;
   opensrs?: { order_id: string | null; domain_id?: string | null; code?: number; text?: string };
 }
 
@@ -69,8 +70,8 @@ export interface Order {
 export interface OrderDetail { order: Order; can_continue: boolean }
 
 export interface DomainRow {
-  domain: string; state: string; reason: string | null; term: number; amount_cents: number; currency: string;
-  registered_at: string | null; tucows_order: string | null; order_id: string; order_status: string;
+  domain: string; service: string; state: string; reason: string | null; term: number; amount_cents: number; currency: string;
+  registered_at: string | null; expires_at: string | null; tucows_order: string | null; order_id: string; order_status: string;
   ordered_at: string; test_mode: boolean; name: string; email: string;
 }
 export interface DomainList { rows: DomainRow[]; total: number; page: number; pages: number; counts: Record<string, number> }
@@ -83,5 +84,19 @@ export interface CustomerList { rows: CustomerRow[]; total: number; page: number
 
 export interface AuditEntry { at: string; action: string; who: string | null; ip: string | null; detail: Record<string, unknown> | null }
 export interface Team { users: AdminUser[]; activity: AuditEntry[] | null }
+
+export interface SalesReport {
+  days: number;
+  from: string;
+  to: string;
+  test_mode: boolean;
+  period: { orders: number; registered: number; renewed: number; failed: number; usd: number; cad: number };
+  all: { registered: number; renewed: number; usd: number; cad: number };
+  buyers: { order_id: string; created_at: string; name: string; org: string; email: string; country: string; lines: { domain: string; service: string; state: string; term: number }[] }[];
+  expiring: { domain: string; expires_at: string; name: string; email: string; order_id: string }[];
+  renewal_window_days: number;
+}
+
+export interface Balance { balance_usd: number | null; env: "test" | "live"; alert_below_usd: number }
 
 export interface SessionInfo { current: boolean; created_at: string; last_seen_at: string; ip: string | null; device: string }

@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CSSProperties } from "react";
 import { Prose } from "@/components/Prose";
 import { Row } from "@/components/Row";
 import { Column } from "@/components/Column";
-import { SOURCE_ROWS } from "@/data/domains";
-import { FIXTURE_DOMAINS } from "@/data/whois-fixtures";
 import { PagePanel, PanelBlock } from "../PagePanel";
 import { WhoisLookupFromUrl } from "../DomainFromUrl";
 
@@ -20,8 +17,6 @@ export const metadata: Metadata = {
 const lookupColStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--flow-group)" };
 const asideColStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--flow-group)" };
 
-const sourceStyle: CSSProperties = { margin: 0, fontSize: "var(--type-sm)", lineHeight: "var(--leading-normal)", color: "var(--text-positive-tertiary)" };
-const sourceLinkStyle: CSSProperties = { color: "var(--text-positive-link)" };
 
 export default function WhoisPage() {
   return (
@@ -39,25 +34,8 @@ export default function WhoisPage() {
       <Row cols={{ mobile: 1, tablet: 1, desktop: 12 }} gap="xl" alignItems="start">
         <Column span={{ mobile: 1, tablet: 1, desktop: 8 }}>
           <div style={lookupColStyle}>
+            {/* Live from the registry since Oct 2026 (RDAP, GET /api/whois/); the sample snapshot is gone. */}
             <WhoisLookupFromUrl />
-            {/* The table is a SNAPSHOT, not a live lookup, and the page says so in its own words
-                rather than letting a visitor infer it from a stale date. SOURCE_ROWS is read,
-                never typed: the count changes whenever the export is regenerated. */}
-            <p style={sourceStyle}>
-              Searching a snapshot of {SOURCE_ROWS.toLocaleString("en-US")} domain records, not a live
-              registry. Records are shown as at the date they were checked. Try{" "}
-              {/* THE CURATED FIXTURES, not the first rows of the client's export. Each of these
-                  demonstrates one state a whois answer can be in; the export's first rows are
-                  expired 2016 registrations belonging to strangers, which demo badly and teach
-                  nothing. Swapped 18 Sep 2026, with the miss state that offers the same three. */}
-              {FIXTURE_DOMAINS.slice(0, 3).map((d, i) => (
-                <span key={d}>
-                  {i > 0 ? ", " : ""}
-                  <Link href={`/whois?domain=${encodeURIComponent(d)}`} style={sourceLinkStyle}>{d}</Link>
-                </span>
-              ))}
-              .
-            </p>
           </div>
         </Column>
         <Column span={{ mobile: 1, tablet: 1, desktop: 4 }}>

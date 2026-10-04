@@ -5,9 +5,10 @@ import { ArrowRight, Download, Information } from "@carbon/icons-react";
 import { useApi } from "../lib/api";
 import { ago, money, plural, shortDay, when } from "../lib/format";
 import { useSession } from "../lib/session";
-import type { Overview } from "../lib/types";
+import type { Balance, Overview } from "../lib/types";
 import { Empty, ErrorNotice, PageHead, Panel, Skel, SkelRows, StatusBadge } from "../ui/bits";
 import { OrdersTable } from "../ui/OrdersTable";
+import { SalesReportPanel } from "./SalesReport";
 
 function compare(now: number, before: number): string {
   if (before === 0) return now === 0 ? "None the 30 days before either" : "None the 30 days before";
@@ -103,6 +104,8 @@ function Attention({ o }: { o: Overview }) {
 export function DashboardView() {
   const { me } = useSession();
   const { data, error, loading, reload } = useApi<Overview>("/overview");
+  const balance = useApi<Balance>("/balance").data;
+  const low = balance?.balance_usd != null && balance.balance_usd < balance.alert_below_usd;
   const first = me?.user.name.split(" ")[0];
 
   return (
@@ -124,6 +127,18 @@ export function DashboardView() {
         </div>
       ) : null}
 
+      {balance ? (
+        <div className="adm-notice" data-tone={low || balance.balance_usd === null ? "warning" : undefined}>
+          <Information size={16} aria-hidden="true" />
+          <p>
+            {balance.balance_usd === null
+              ? "The Tucows balance could not be read just now."
+              : `Tucows balance${balance.env === "test" ? " (test system)" : ""}: ${money(Math.round(balance.balance_usd * 100), "usd")}.`}
+            {low ? ` Below ${money(balance.alert_below_usd * 100, "usd")}: add funds in the Tucows panel, or new orders go on hold.` : ""}
+          </p>
+        </div>
+      ) : null}
+
       <ErrorNotice error={error} onRetry={reload} />
 
       {data ? <Figures o={data} /> : (
@@ -142,6 +157,8 @@ export function DashboardView() {
           {data ? <Attention o={data} /> : <SkelRows rows={3} label="Loading" />}
         </Panel>
       </div>
+
+      <SalesReportPanel />
 
       <Panel title="Latest orders" id="latest" action={<Link href="/admin/orders/" style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2xs)" }}>All orders <ArrowRight size={16} aria-hidden="true" /></Link>}>
         {loading && !data ? <SkelRows rows={5} label="Loading orders" /> : null}

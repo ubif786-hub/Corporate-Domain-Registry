@@ -1,10 +1,11 @@
-import type { CheckoutRegistrant, Currency, LineState, OrderStatus } from "@cdr/shared";
+import type { CheckoutRegistrant, Currency, LineService, LineState, OrderStatus } from "@cdr/shared";
 
 export type FailReason = "taken" | "tucows_on_hold" | "rejected" | "error";
 
 export interface OrderLine {
   domain: string;
-  service: "register";
+  /** A renewal reuses the registration states: "registered" means renewed. */
+  service: LineService;
   label: string;
   term: number;
   amount_cents: number;
@@ -12,6 +13,9 @@ export interface OrderLine {
   attempts: number;
   attempted_at?: string;
   registered_at?: string;
+  /** The domain's expiry date as last known. A renewal carries the date Tucows reported at checkout
+   *  (its year guards against renewing twice) until it goes through, then the new date. */
+  expires_at?: string;
   reason?: FailReason;
   opensrs?: {
     order_id: string | null;

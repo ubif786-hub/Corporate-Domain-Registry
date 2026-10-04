@@ -4,7 +4,7 @@
 // fulfilment, which registers each domain and then charges only for what registered, releasing the
 // rest of the hold. Promotion codes are entered on Stripe's page.
 
-import type { CheckoutRegistrant, Currency } from "@cdr/shared";
+import { CA_LEGAL_TYPES, type CheckoutRegistrant, type Currency } from "@cdr/shared";
 import type { Config } from "../../core/config";
 import { isTestMode } from "../../core/config";
 import { HttpError } from "../../core/http";
@@ -46,7 +46,11 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
     events: [],
     log: [],
   };
-  note(order, `Order created, ${money(subtotal, currency)}; all domains confirmed available.`);
+  note(order, `Order created, ${money(subtotal, currency)}; every domain checked at Tucows.`);
+  if (registrant.ca_legal_type) {
+    const type = CA_LEGAL_TYPES.find((t) => t.code === registrant.ca_legal_type);
+    note(order, `.ca: the registrant qualifies as "${type?.label ?? registrant.ca_legal_type}" (${registrant.ca_legal_type}), and confirmed CIRA's requirements and registrant agreement.`);
+  }
   await insertOrder(order);
 
   const r = await stripe("POST", "/checkout/sessions", {
@@ -74,7 +78,7 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
       price_data: {
         currency,
         unit_amount: l.amount_cents,
-        product_data: { name: `${l.domain}, registration for ${l.term} ${l.term === 1 ? "year" : "years"}` },
+        product_data: { name: `${l.domain}, ${l.service === "renew" ? "renewal" : "registration"} for ${l.term} ${l.term === 1 ? "year" : "years"}` },
       },
     })),
   }, "cdr-checkout-" + id);

@@ -5,13 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { normaliseDomain } from "@/data/lookup";
 import { SearchPanel } from "./search/SearchPanel";
 import { WhoisLookup } from "./whois/WhoisLookup";
+import { RenewPanel } from "./renew/RenewPanel";
 
 /* THE TYPED DOMAIN IS READ IN THE BROWSER, NOT ON THE SERVER (20 Sep 2026).
  *
  * The five lookup pages used to `await searchParams` in the page component, which makes each one
  * a per-request server render. The site is moving to the client's own cPanel hosting, which serves
  * files and runs no Node, so a page may not need a server to exist. Nothing about the lookup ever
- * did: `lookup()` and the price ladder already run in the browser from data shipped with the page.
+ * did: the lookups run in the browser, against the API.
  * Only the read of `?domain=` was server-side, and this is that read, moved.
  *
  * `useSearchParams` needs a Suspense boundary above it or a static build bails out of prerendering
@@ -48,6 +49,19 @@ export function WhoisLookupFromUrl() {
   return (
     <Suspense fallback={<WhoisLookup initial="" />}>
       <WhoisLookupInner />
+    </Suspense>
+  );
+}
+
+function RenewPanelInner() {
+  const domain = useDomainParam();
+  return <RenewPanel key={domain} domain={domain} />;
+}
+
+export function RenewPanelFromUrl() {
+  return (
+    <Suspense fallback={<RenewPanel domain="" />}>
+      <RenewPanelInner />
     </Suspense>
   );
 }

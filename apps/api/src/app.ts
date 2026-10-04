@@ -10,7 +10,9 @@ import { cronRouter } from "./features/cron/cron.routes";
 import { domainCheckRouter } from "./features/domain-check/domain-check.routes";
 import { geoRouter } from "./features/geo/geo.routes";
 import { orderStatusRouter } from "./features/orders/order-status.routes";
+import { renewRouter } from "./features/renew/renew.routes";
 import { stripeWebhookRouter } from "./features/stripe-webhook/stripe-webhook.routes";
+import { whoisRouter } from "./features/whois/whois.routes";
 
 export function createApp(options: { staticDir?: string } = {}) {
   const app = express();
@@ -21,6 +23,8 @@ export function createApp(options: { staticDir?: string } = {}) {
 
   app.use(geoRouter);
   app.use(domainCheckRouter);
+  app.use(renewRouter);
+  app.use(whoisRouter);
   app.use(checkoutRouter);
   app.use(stripeWebhookRouter);
   app.use(orderStatusRouter);

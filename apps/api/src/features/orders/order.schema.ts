@@ -11,7 +11,7 @@
 
 import { sql } from "drizzle-orm";
 import { bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import type { CheckoutRegistrant, Currency, LineState, OrderStatus } from "@cdr/shared";
+import type { CheckoutRegistrant, Currency, LineService, LineState, OrderStatus } from "@cdr/shared";
 import type { FailReason, Order, OrderLine, OrderStripe } from "./order.types";
 
 /* The allowed values, checked by the database as well as by TypeScript. The type lines below fail
@@ -72,7 +72,7 @@ export const orderLines = pgTable("order_lines", {
   orderId: text("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
   position: smallint("position").notNull(),
   domain: text("domain").notNull(),
-  service: text("service").$type<"register">().notNull(),
+  service: text("service").$type<LineService>().notNull(),
   label: text("label").notNull(),
   term: smallint("term").notNull(),
   amountCents: integer("amount_cents").notNull(),
@@ -80,6 +80,8 @@ export const orderLines = pgTable("order_lines", {
   attempts: smallint("attempts").notNull().default(0),
   attemptedAt: ts("attempted_at"),
   registeredAt: ts("registered_at"),
+  /** The domain's expiry as last known (order.types.ts OrderLine.expires_at). */
+  expiresAt: ts("expires_at"),
   reason: text("reason").$type<FailReason>(),
   /** Tucows' reply: order id, domain id, response code and text, the generated profile name. */
   opensrs: jsonb("opensrs").$type<NonNullable<OrderLine["opensrs"]>>(),
@@ -93,6 +95,7 @@ export const orderLines = pgTable("order_lines", {
   check("order_lines_amount_not_negative", sql`${t.amountCents} >= 0`),
   index("order_lines_domain_idx").on(sql`lower(${t.domain})`),
   index("order_lines_opensrs_order_idx").on(t.opensrsOrderId),
+  check("order_lines_service_valid", sql`${t.service} in ('register', 'renew')`),
 ]);
 
 export const orderLog = pgTable("order_log", {

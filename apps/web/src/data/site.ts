@@ -204,13 +204,12 @@ export const POPULAR_TLDS: string[] = byTier("popular");
 export const NEW_TLDS: string[] = byTier("new");
 
 /**
- * What a cart line is FOR, as the reference words it. Renewal and transfer are one product at this
- * step and one label, which is the reference's own fusion and the owner's call of 4 Sep 2026; the
- * two only diverge at fulfilment, where a transfer needs an auth code and a renewal does not.
+ * What a cart line is FOR. The shop sells registrations and, since Oct 2026, renewals of domains in
+ * CDR's own Tucows account (/renew/). Transfers are still arranged by email; their label stays.
  */
 export const SERVICE_LABELS: Record<Service, string> = {
   register: "Domain Registration",
-  renew: "Domain Renewal / Transfer",
+  renew: "Domain Renewal",
   transfer: "Domain Renewal / Transfer",
 };
 

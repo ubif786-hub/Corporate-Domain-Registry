@@ -51,8 +51,8 @@ export function StatusBadge({ status }: { status: string }) {
   return <Badge tone={w.tone} textCase="sentence">{w.label}</Badge>;
 }
 
-export function LineBadge({ state }: { state: string }) {
-  const w = lineWording(state);
+export function LineBadge({ state, service }: { state: string; service?: string }) {
+  const w = lineWording(state, service);
   return <Badge tone={w.tone} textCase="sentence" icon={false}>{w.label}</Badge>;
 }
 

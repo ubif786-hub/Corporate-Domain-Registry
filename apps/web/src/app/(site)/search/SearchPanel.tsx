@@ -1,6 +1,7 @@
 "use client";
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Heading } from "@/components/Heading";
 import { Row } from "@/components/Row";
@@ -24,7 +25,8 @@ import { alternatives, checkDomain, SELLABLE_TLDS, type DomainCheck } from "@/da
  * THE ANSWER COMES FROM THE REGISTRY (Sep 2026). Every search asks the API (GET /api/domain-check/), which
  * asks Tucows. Only a FREE domain on an extension sold online can go in the cart, as a
  * registration. A taken domain is said to be taken, with the same name under the other
- * extensions offered as one-tap searches; renewals and transfers are arranged by email for now.
+ * extensions offered as one-tap searches and a link to the renewal page (/renew/, for domains
+ * registered with CDR); transfers are arranged by email.
  *
  * A SEARCH RUNS ONLY WHEN SOMEBODY SUBMITS ONE (the registrar's agreement, 3.2, forbids lookups
  * nobody asked for): on the form's submit, on an alternative's tap, or on arriving from the home
@@ -197,7 +199,7 @@ function Refusal({ check, onSearch }: { check: DomainCheck; onSearch: (d: string
   const alts = status === "taken" || status === "premium" || status === "unsupported" ? alternatives(domain) : [];
 
   let message: React.ReactNode;
-  if (status === "taken") message = <>This domain is already registered. If it is yours and you want to renew or transfer it, email us at {email}.</>;
+  if (status === "taken") message = <>This domain is already registered. If you registered it with us, <Link href={`/renew?domain=${encodeURIComponent(domain)}`} style={linkStyle}>renew it here</Link>. To transfer it to us, email us at {email}.</>;
   else if (status === "premium") message = <>This is a premium domain priced by its registry, so it cannot be ordered online. Email us at {email} for a quote.</>;
   else if (status === "unsupported") message = <>.{tld} domains are not sold online yet. Email us at {email} to order one.</>;
   else if (status === "invalid") message = <>This does not look like a domain name. Enter it with its extension, like myawesomedomain.com.</>;

@@ -31,7 +31,7 @@ export interface OrderSummary {
   org: string;
   email: string;
   country: string;
-  lines: { domain: string; state: string; term: number }[];
+  lines: { domain: string; state: string; term: number; service: string }[];
 }
 
 export function summarise(o: Order): OrderSummary {
@@ -48,7 +48,7 @@ export function summarise(o: Order): OrderSummary {
     org: r.org_name ?? "",
     email: r.email,
     country: r.country,
-    lines: o.lines.map((l) => ({ domain: l.domain, state: l.state, term: l.term })),
+    lines: o.lines.map((l) => ({ domain: l.domain, state: l.state, term: l.term, service: l.service })),
   };
 }
 
@@ -148,12 +148,14 @@ const like = (text: string) => "%" + text.replace(/[\\%_]/g, "\\$&") + "%";
 
 export interface DomainRow {
   domain: string;
+  service: string;
   state: string;
   reason: string | null;
   term: number;
   amount_cents: number;
   currency: string;
   registered_at: string | null;
+  expires_at: string | null;
   tucows_order: string | null;
   order_id: string;
   order_status: OrderStatus;
@@ -176,13 +178,13 @@ export async function domains(f: { text: string; state: string; limit: number; o
   const cond = sql.join(where, sql` and `);
   const [{ total }] = (await d.execute(sql`select count(*)::int as total from order_lines l join orders o on o.id = l.order_id where ${cond}`)).rows as { total: number }[];
   const rows = (await d.execute(sql`
-    select l.domain, l.state, l.reason, l.term, l.amount_cents, o.currency, l.registered_at, l.opensrs_order_id as tucows_order,
+    select l.domain, l.service, l.state, l.reason, l.term, l.amount_cents, o.currency, l.registered_at, l.expires_at, l.opensrs_order_id as tucows_order,
       o.id as order_id, o.status as order_status, o.created_at as ordered_at, o.test_mode, o.email,
       trim(concat_ws(' ', o.registrant->>'first_name', o.registrant->>'last_name')) as name
     from order_lines l join orders o on o.id = l.order_id
     where ${cond}
     order by o.created_at desc, l.position
-    limit ${f.limit} offset ${f.offset}`)).rows as (Omit<DomainRow, "registered_at" | "ordered_at"> & { registered_at: Date | string | null; ordered_at: Date | string })[];
+    limit ${f.limit} offset ${f.offset}`)).rows as (Omit<DomainRow, "registered_at" | "expires_at" | "ordered_at"> & { registered_at: Date | string | null; expires_at: Date | string | null; ordered_at: Date | string })[];
   const counts = (await d.execute(sql`
     select l.state, count(*)::int as n from order_lines l join orders o on o.id = l.order_id
     where o.status not in (${list(UNPAID)}) group by l.state`)).rows as { state: string; n: number }[];
@@ -192,6 +194,7 @@ export async function domains(f: { text: string; state: string; limit: number; o
       term: Number(r.term),
       amount_cents: Number(r.amount_cents),
       registered_at: r.registered_at ? iso(r.registered_at) : null,
+      expires_at: r.expires_at ? iso(r.expires_at) : null,
       ordered_at: iso(r.ordered_at),
     })),
     total: Number(total),

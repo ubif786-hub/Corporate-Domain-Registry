@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { CheckmarkOutline, Email, Launch, Phone, Renew, WarningAlt } from "@carbon/icons-react";
 import { Button } from "@/components/Button";
+import { CA_LEGAL_TYPES } from "@cdr/shared";
 import { api, ApiError, useApi } from "../../../lib/api";
-import { country, money, stamp, when, years } from "../../../lib/format";
+import { country, day, money, stamp, when, years } from "../../../lib/format";
 import type { Order, OrderDetail } from "../../../lib/types";
 import { FAIL_REASON, statusWording } from "../../../lib/words";
 import { Empty, ErrorNotice, LineBadge, PageHead, Panel, Skel, SkelRows, StatusBadge, TestTag, useQueryState } from "../../../ui/bits";
@@ -56,6 +57,7 @@ function Customer({ o }: { o: Order }) {
       <div>
         <div className="strong">{`${r.first_name} ${r.last_name}`}</div>
         {r.org_name ? <div>{r.org_name}</div> : null}
+        {r.ca_legal_type ? <div className="adm-cell-sub">.ca: {CA_LEGAL_TYPES.find((t) => t.code === r.ca_legal_type)?.label ?? r.ca_legal_type} ({r.ca_legal_type})</div> : null}
       </div>
       <address style={{ fontStyle: "normal", color: "var(--text-positive-secondary)", fontSize: "var(--type-sm)" }}>
         {r.address1}{r.address2 ? <><br />{r.address2}</> : null}<br />
@@ -109,13 +111,17 @@ function Domains({ o }: { o: Order }) {
         <tbody>
           {o.lines.map((l) => (
             <tr key={l.domain}>
-              <td className="dom"><span className="mono">{l.domain}</span></td>
+              <td className="dom">
+                <span className="mono">{l.domain}</span>
+                {l.service === "renew" ? <span className="adm-cell-sub">Renewal</span> : null}
+              </td>
               <td className="nowrap">{years(l.term)}</td>
               <td className="num">{money(l.amount_cents, o.currency)}</td>
               <td style={{ minWidth: "14rem" }}>
-                <LineBadge state={l.state} />
+                <LineBadge state={l.state} service={l.service} />
                 {l.reason ? <span className="adm-cell-sub">{FAIL_REASON[l.reason] ?? l.reason}</span> : null}
                 {l.registered_at ? <span className="adm-cell-sub">{when(l.registered_at)}</span> : null}
+                {l.state === "registered" && l.expires_at ? <span className="adm-cell-sub">Expires {day(l.expires_at)}</span> : null}
                 {l.opensrs?.text && l.state !== "registered" ? <span className="adm-cell-sub">Tucows: {l.opensrs.code} {l.opensrs.text}</span> : null}
               </td>
               <td className="mono nowrap">{l.opensrs?.order_id ?? ""}</td>

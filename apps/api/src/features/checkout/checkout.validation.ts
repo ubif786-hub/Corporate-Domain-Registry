@@ -1,7 +1,7 @@
 // What the checkout form and the cart must look like before anything is checked at the registry.
 // NOTHING THE BROWSER SAYS ABOUT MONEY IS BELIEVED: every line is priced here from the catalogue.
 
-import { catalog, isSellable, isValidDomain, normaliseDomain, priceCents, tldOf, type CheckoutRegistrant, type Currency } from "@cdr/shared";
+import { CA_LEGAL_TYPES, catalog, isSellable, isValidDomain, normaliseDomain, priceCents, tldOf, type CheckoutRegistrant, type Currency, type LineService } from "@cdr/shared";
 import { HttpError } from "../../core/http";
 import type { OrderLine } from "../orders/order.types";
 
@@ -25,16 +25,18 @@ export function validateCart(rawItems: unknown, currency: Currency, cadRate: num
   const seen = new Set<string>();
   items.forEach((item, i) => {
     const domain = normaliseDomain(typeof item?.domain === "string" ? item.domain : "");
+    // A renewal can be for any extension: whether the domain is in CDR's account is checked at Tucows.
+    const service: LineService = item?.service === "renew" ? "renew" : "register";
     const n = Number(item?.term);
     const term = Number.isFinite(n) ? Math.trunc(n) : 0;
     if (!isValidDomain(domain)) { lineErrors[i] = "This is not a domain name we can register."; return; }
-    if (!isSellable(domain)) { lineErrors[i] = `.${tldOf(domain)} domains are not sold online. Contact us to order one.`; return; }
+    if (service === "register" && !isSellable(domain)) { lineErrors[i] = `.${tldOf(domain)} domains are not sold online. Contact us to order one.`; return; }
     const amount = priceCents(term, currency, cadRate);
-    if (!catalog.terms.includes(term) || amount === null) { lineErrors[i] = "Choose a registration period."; return; }
+    if (!catalog.terms.includes(term) || amount === null) { lineErrors[i] = "Choose a period."; return; }
     if (seen.has(domain)) return;
     seen.add(domain);
     positions.push(i);
-    lines.push({ domain, service: "register", label: "Domain registration", term, amount_cents: amount, state: "new", attempts: 0 });
+    lines.push({ domain, service, label: service === "renew" ? "Domain renewal" : "Domain registration", term, amount_cents: amount, state: "new", attempts: 0 });
   });
   return { lines, positions, lineErrors };
 }
@@ -83,4 +85,23 @@ export function validateRegistrant(raw: unknown, agreed: unknown): { registrant:
   }
   if (!agreed) errors.agree = "Accept the agreement to continue.";
   return { registrant, errors };
+}
+
+const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT", "YK"];
+
+/** A .ca registration (CIRA): how the registrant qualifies (legal type), an organisation name for
+ *  the organisation types, a Canadian address, and the registrant's confirmation. Refused here,
+ *  before payment, so nobody is charged for a .ca the registry would turn down. */
+export function validateCa(registrant: CheckoutRegistrant, raw: unknown, confirmed: unknown, errors: Record<string, string>): void {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const type = CA_LEGAL_TYPES.find((t) => t.code === r.ca_legal_type);
+  if (!type) errors.ca_legal_type = "Choose how the registrant qualifies for a .ca domain.";
+  else {
+    registrant.ca_legal_type = type.code;
+    if (type.org && registrant.org_name === "") errors.org_name = "Required: this .ca is registered to an organisation.";
+  }
+  if (registrant.country !== "" && registrant.country !== "CA") errors.country = "A .ca domain needs a Canadian address.";
+  else if (registrant.country === "CA" && registrant.state !== "" && !PROVINCES.includes(registrant.state.toUpperCase())) errors.state = "Use the two-letter province code, for example ON.";
+  else registrant.state = registrant.state.toUpperCase();
+  if (confirmed !== true) errors.ca_agree = "Confirm the .ca requirements to continue.";
 }

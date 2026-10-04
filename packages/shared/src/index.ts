@@ -65,7 +65,65 @@ export function isSellable(domain: string): boolean {
     && (domain.slice(2, 4) !== "--" || domain.startsWith("xn--"));
 }
 
+/* ---------- .ca (CIRA) ---------- */
+
+/** CIRA's Canadian presence classes, as OpenSRS takes them (registrant_extra_info.legal_type).
+ *  org: the registrant must be an organisation, so the organisation name is required (OpenSRS
+ *  .CA contact rules: every type except ABO, CCT, LGR and RES). */
+export const CA_LEGAL_TYPES: { code: string; label: string; org: boolean }[] = [
+  { code: "CCT", label: "Canadian citizen", org: false },
+  { code: "RES", label: "Permanent resident of Canada", org: false },
+  { code: "CCO", label: "Corporation registered in Canada", org: true },
+  { code: "PRT", label: "Partnership registered in Canada", org: true },
+  { code: "TRS", label: "Trust established in Canada", org: true },
+  { code: "ASS", label: "Canadian unincorporated association", org: true },
+  { code: "TDM", label: "Owner of a trademark registered in Canada", org: true },
+  { code: "LGR", label: "Legal representative of a Canadian citizen or permanent resident", org: false },
+  { code: "ABO", label: "Aboriginal person indigenous to Canada", org: false },
+  { code: "INB", label: "Indian band recognised in Canada", org: true },
+  { code: "EDU", label: "Canadian educational institution", org: true },
+  { code: "LAM", label: "Canadian library, archive or museum", org: true },
+  { code: "HOP", label: "Canadian hospital", org: true },
+  { code: "GOV", label: "Government or government body in Canada", org: true },
+  { code: "TRD", label: "Trade union recognised in Canada", org: true },
+  { code: "PLT", label: "Canadian political party", org: true },
+  { code: "OMK", label: "Official mark protected by the Trademarks Act", org: true },
+  { code: "MAJ", label: "His Majesty the King", org: true },
+];
+
 /* ---------- the API contract ---------- */
+
+/** What a cart line buys. A renewal is only for a domain already in CDR's Tucows account. */
+export type LineService = "register" | "renew";
+
+/** GET /api/renew-check/?domain= */
+export interface RenewCheckResponse {
+  domain: string;
+  /** renewable: in CDR's Tucows account; not_ours: registered elsewhere (or not at all) */
+  status: "renewable" | "not_ours" | "invalid" | "error";
+  /** "USD" or "CAD" */
+  currency: string;
+  /** Only when renewable. */
+  expires_at?: string;
+  /** The most years it can be renewed by: a registration may not run past ten years. */
+  max_term?: number;
+  prices?: Record<string, number>;
+}
+
+/** GET /api/whois/?domain= (the registry's RDAP record) */
+export interface WhoisResponse {
+  domain: string;
+  /** registered: a record exists; available: the registry has none; unsupported: the extension
+   *  publishes no RDAP service */
+  status: "registered" | "available" | "unsupported" | "invalid" | "error";
+  registrar: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  expires_at: string | null;
+  statuses: string[];
+  nameservers: string[];
+  checked_at: string;
+}
 
 /** GET /api/domain-check/?domain= */
 export type CheckStatus = "available" | "taken" | "premium" | "unsupported" | "invalid" | "error";
@@ -93,12 +151,18 @@ export interface CheckoutRegistrant {
   state: string;
   postal_code: string;
   country: string;
+  /** Only on orders with a .ca domain: CIRA's legal type (CA_LEGAL_TYPES). */
+  ca_legal_type?: string;
 }
 
 export interface CheckoutRequest {
-  items: { domain: string; term: number }[];
+  /** service defaults to "register". */
+  items: { domain: string; term: number; service?: LineService }[];
   registrant: Partial<CheckoutRegistrant>;
   agree: boolean;
+  /** Only with a .ca domain in the cart: the registrant meets CIRA's Canadian presence rules and
+   *  accepts CIRA's registrant agreement. */
+  ca_agree?: boolean;
 }
 
 export interface CheckoutResponse {
@@ -129,7 +193,8 @@ export interface OrderStatusResponse {
   status: OrderStatus;
   /** "USD" or "CAD" */
   currency: string;
-  lines: { domain: string; term: number; state: LineState }[];
+  /** state "registered" on a renewal means renewed. */
+  lines: { domain: string; term: number; state: LineState; service: LineService }[];
   /** Whole currency units actually charged, once settled. */
   charged: number | null;
   email: string;

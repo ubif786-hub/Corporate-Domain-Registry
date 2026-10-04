@@ -61,6 +61,10 @@ export function statusWording(status: string): Wording {
   return ORDER_STATUS[status] ?? { label: status.replace(/_/g, " "), tone: "neutral", explain: "" };
 }
 
-export function lineWording(state: string): Wording {
-  return LINE_STATE[state] ?? { label: state, tone: "neutral", explain: "" };
+const RENEW_LABEL: Record<string, string> = { registering: "Renewing", registered: "Renewed", failed: "Not renewed" };
+
+/** A renewal reuses the registration states ("registered" means renewed). */
+export function lineWording(state: string, service = "register"): Wording {
+  const w = LINE_STATE[state] ?? { label: state, tone: "neutral", explain: "" };
+  return service === "renew" && RENEW_LABEL[state] ? { ...w, label: RENEW_LABEL[state] } : w;
 }

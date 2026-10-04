@@ -45,7 +45,7 @@ interface Status {
   order: string;
   status: string;
   currency: string;
-  lines: { domain: string; term: number; state: LineState }[];
+  lines: { domain: string; term: number; state: LineState; service: "register" | "renew" }[];
   charged: number | null;
   email: string;
 }
@@ -115,14 +115,18 @@ export function DoneView() {
 
   const s = status?.status ?? "pending_payment";
   const charged = status?.charged != null ? `${money(status.charged, status.currency)} ${status.currency}` : null;
-  const registered = status?.lines.filter((l) => l.state === "registered") ?? [];
+  const lines = status?.lines ?? [];
+  const done = lines.filter((l) => l.state === "registered");
+  // "registered" on a renewal means renewed.
+  const verb = lines.length && lines.every((l) => l.service === "renew") ? "renewed" : lines.some((l) => l.service === "renew") ? "registered or renewed" : "registered";
+  const newlyRegistered = done.filter((l) => l.service !== "renew");
 
   let headline: React.ReactNode;
   if (WAITING.includes(s)) headline = slow ? <>We have not had your payment confirmation yet. If you paid, we will email you at your address as soon as it arrives.</> : <>Confirming your payment with Stripe…</>;
-  else if (WORKING.includes(s)) headline = slow ? <>The registry is taking longer than usual. You can close this page: we will email {status?.email} when it is done.</> : <>Payment confirmed. Registering your domains, this usually takes under a minute…</>;
-  else if (s === "registered") headline = <>All done. {registered.length === 1 ? "Your domain is" : "Your domains are"} registered{charged ? <>, and {charged} was charged to your card</> : null}.</>;
-  else if (s === "partially_registered") headline = <>Some of your domains are registered. You were charged {charged ?? "only"} for those; nothing for the ones that could not be registered.</>;
-  else if (s === "failed") headline = <>We are sorry: your domains could not be registered. Your card was not charged, and the hold on it has been released.</>;
+  else if (WORKING.includes(s)) headline = slow ? <>The registry is taking longer than usual. You can close this page: we will email {status?.email} when it is done.</> : <>Payment confirmed. {verb === "renewed" ? "Renewing" : "Registering"} your domains, this usually takes under a minute…</>;
+  else if (s === "registered") headline = <>All done. {done.length === 1 ? "Your domain is" : "Your domains are"} {verb}{charged ? <>, and {charged} was charged to your card</> : null}.</>;
+  else if (s === "partially_registered") headline = <>Some of your domains are {verb}. You were charged {charged ?? "only"} for those; nothing for the ones that did not go through.</>;
+  else if (s === "failed") headline = <>We are sorry: your order could not be completed. Your card was not charged, and the hold on it has been released.</>;
   else if (s === "expired") headline = <>This checkout expired before payment, so nothing was charged. Your cart is still here if you want to try again.</>;
   else if (s === "payment_failed") headline = <>The payment did not go through, so nothing was charged. Your cart is still here if you want to try again.</>;
   else headline = <>We are checking your order by hand and will email you shortly. Nothing more is needed from you.</>;
@@ -136,7 +140,7 @@ export function DoneView() {
           {status.lines.map((l) => (
             <li key={l.domain} style={lineStyle}>
               <span style={domainStyle}>{l.domain}</span>
-              <LineBadge state={l.state} />
+              <LineBadge state={l.state} renew={l.service === "renew"} />
             </li>
           ))}
         </ul>
@@ -146,7 +150,7 @@ export function DoneView() {
         Your order number is <strong style={idStyle}>{ids.order}</strong>. Questions about it go to {contact}, quoting the number.
       </p>
 
-      {registered.length ? (
+      {newlyRegistered.length ? (
         <p style={bodyStyle}>
           Our registry partner, Tucows (OpenSRS), may email the registrant to confirm the contact details. Please answer
           it within 15 days: a domain whose details are not confirmed can be suspended.
@@ -164,9 +168,9 @@ export function DoneView() {
   );
 }
 
-function LineBadge({ state }: { state: LineState }) {
-  if (state === "registered") return <Badge tone="success" emphasis="solid" icon textCase="title">Registered</Badge>;
-  if (state === "failed") return <Badge tone="error" icon textCase="sentence">Not registered, not charged</Badge>;
+function LineBadge({ state, renew }: { state: LineState; renew: boolean }) {
+  if (state === "registered") return <Badge tone="success" emphasis="solid" icon textCase="title">{renew ? "Renewed" : "Registered"}</Badge>;
+  if (state === "failed") return <Badge tone="error" icon textCase="sentence">{renew ? "Not renewed, not charged" : "Not registered, not charged"}</Badge>;
   if (state === "pending") return <Badge tone="warning" textCase="sentence">Waiting for the registry</Badge>;
-  return <Badge tone="neutral" textCase="title">Registering</Badge>;
+  return <Badge tone="neutral" textCase="title">{renew ? "Renewing" : "Registering"}</Badge>;
 }

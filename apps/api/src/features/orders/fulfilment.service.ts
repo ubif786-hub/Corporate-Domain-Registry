@@ -18,6 +18,10 @@
 // ASKS Tucows what happened (get_orders_by_domain) instead of sending the order again. Only a name
 // Tucows has no order for, and that is still free, goes back to "new".
 //
+// RENEWALS (service "renew") go through the same states, "registered" meaning renewed. RENEW carries
+// the expiry year seen at checkout, so Tucows refuses a repeat once one went through (465); a lost
+// reply is settled by reading the expiry back from Tucows.
+//
 // CARD HOLDS LAST SEVEN DAYS. An order still pending on day six is settled anyway: registered and
 // still-pending names are charged, and CDR is told to check.
 
@@ -131,6 +135,13 @@ export async function recordExpired(orderId: string): Promise<Order | null> {
 
 const isFinal = (l: OrderLine) => l.state === "registered" || l.state === "failed";
 
+/** iso plus whole years, as ISO. */
+const plusYears = (iso: string, years: number) => {
+  const d = new Date(iso);
+  d.setUTCFullYear(d.getUTCFullYear() + years);
+  return d.toISOString();
+};
+
 /** Drives one order as far as it can go in about budgetSeconds. Returns the order's status. */
 export async function fulfil(id: string, budgetSeconds = 20): Promise<OrderStatus | "busy" | null> {
   return withDriveLock(id, async () => {
@@ -182,6 +193,7 @@ async function fulfilLine(id: string, i: number): Promise<void> {
   if (!order) return;
   const line = order.lines[i];
   if (isFinal(line)) return;
+  if (line.service === "renew") return renewLine(id, i, line);
 
   if (line.state === "new") {
     if (line.attempts >= MAX_ATTEMPTS) {
@@ -207,7 +219,7 @@ async function fulfilLine(id: string, i: number): Promise<void> {
       // payment, so the line fails and CDR is told to cancel it in the panel.
       await setLine(id, i, { state: "failed", reason: "tucows_on_hold", opensrs: tucows }, said + " Order put on hold by Tucows: cancel it in the Tucows panel.");
     } else if (r.code === 200) {
-      await setLine(id, i, { state: "registered", registered_at: isoNow(), opensrs: tucows }, said);
+      await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: plusYears(isoNow(), line.term), opensrs: tucows }, said);
     } else if (r.code === 250) {
       await setLine(id, i, { state: "pending", opensrs: tucows }, said + " The registry answers later.");
     } else if (r.code === 485 || r.code === 211 || r.code === 221) {
@@ -230,7 +242,7 @@ async function fulfilLine(id: string, i: number): Promise<void> {
       if (when !== null && when < since) continue;
       const tucows = { ...(line.opensrs ?? {}), order_id: o.id };
       if (o.status === "completed") {
-        await setLine(id, i, { state: "registered", registered_at: isoNow(), opensrs: tucows }, `Found Tucows order ${o.id}, completed.`);
+        await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: plusYears(isoNow(), line.term), opensrs: tucows }, `Found Tucows order ${o.id}, completed.`);
         return;
       }
       if (o.status === "pending" || o.status === "waiting" || o.status === "processed") {
@@ -255,8 +267,50 @@ async function fulfilLine(id: string, i: number): Promise<void> {
       return;
     }
     const status = await opensrs.orderStatus(tucowsId);
-    if (status === "completed") await setLine(id, i, { state: "registered", registered_at: isoNow() }, "Tucows order completed.");
+    if (status === "completed") await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: plusYears(isoNow(), line.term) }, "Tucows order completed.");
     else if (status === "declined" || status === "cancelled" || status === "deleted") await setLine(id, i, { state: "failed", reason: "rejected" }, `Tucows order ${status}.`);
+  }
+}
+
+/** Moves one renewal one step. */
+async function renewLine(id: string, i: number, line: OrderLine): Promise<void> {
+  const from = line.expires_at;
+  if (!from) {
+    await setLine(id, i, { state: "failed", reason: "error" }, "No expiry date from checkout; not renewed.");
+    return;
+  }
+  const fromYear = new Date(from).getUTCFullYear();
+
+  if (line.state === "new") {
+    if (line.attempts >= MAX_ATTEMPTS) {
+      await setLine(id, i, { state: "failed", reason: "error" }, `Gave up after ${MAX_ATTEMPTS} attempts.`);
+      return;
+    }
+    await setLine(id, i, { state: "registering", attempts: line.attempts + 1, attempted_at: isoNow() }, `Renewing at Tucows from ${fromYear}.`);
+    const r = await opensrs.renew(line.domain, fromYear, line.term);
+    const tucows = { order_id: typeof r.attributes.order_id === "string" ? r.attributes.order_id : null, code: r.code, text: r.text };
+    const said = ("Tucows replied " + (r.transport ? `${r.code} ${r.text}` : `nothing (${r.error})`)).replace(/\.*$/, ".");
+    if (!r.transport) {
+      await setLine(id, i, { state: "unknown", opensrs: tucows }, said + " Will read the expiry at Tucows before trying again.");
+    } else if (r.code === 200) {
+      await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: r.expires_at ?? plusYears(from, line.term), opensrs: tucows }, said);
+    } else {
+      // 465 or 541 mean the expiry year changed since checkout: renewed some other way, not by us.
+      await setLine(id, i, { state: "failed", reason: "rejected", opensrs: tucows }, said);
+    }
+    return;
+  }
+
+  if (line.state === "registering" || line.state === "unknown") {
+    const now = await opensrs.domainExpiry(line.domain);
+    if (now.status === "error") return; // Tucows not reachable: try again on the next pass
+    if (now.status === "not_ours") {
+      await setLine(id, i, { state: "failed", reason: "rejected" }, "No longer in the Tucows account; not renewed.");
+    } else if (new Date(now.expires_at).getUTCFullYear() > fromYear) {
+      await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: now.expires_at }, `Tucows shows the new expiry ${now.expires_at.slice(0, 10)}: renewed.`);
+    } else {
+      await setLine(id, i, { state: "new" }, "The expiry at Tucows has not moved, so nothing happened; will try again.");
+    }
   }
 }
 

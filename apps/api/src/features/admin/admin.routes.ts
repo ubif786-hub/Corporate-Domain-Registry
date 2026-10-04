@@ -17,7 +17,8 @@
 //   GET    /api/admin/export.csv              one row per domain, every paid order
 //   GET    /api/admin/domains                 ?q= &state= &page=
 //   GET    /api/admin/customers               ?q= &page=
-//   GET    /api/admin/balance                 the Tucows balance
+//   GET    /api/admin/balance                 the Tucows balance, and the level that sends an alert
+//   GET    /api/admin/report                  ?days=7|30|90|365: the sales report (the same figures as the email)
 //   GET    /api/admin/team                    the people (owners also get the activity log)
 //   POST   /api/admin/team                    owner: add { name, email, role }, answers a setup link
 //   POST   /api/admin/team/:id/link           owner: a new setup link (first sign-in or reset)
@@ -35,6 +36,7 @@ import { HttpError } from "../../core/http";
 import { countFailure, overLimit, rateLimited } from "../../core/rate-limit";
 import { visitorIp } from "../../core/visitor";
 import { balance } from "../../integrations/opensrs/client";
+import { reportData } from "../reports/reports.service";
 import { DRIVABLE, fulfil } from "../orders/fulfilment.service";
 import { isValidOrderId, listOrders, ordersForExport, readOrder } from "../orders/order.store";
 import {
@@ -218,7 +220,17 @@ api.get("/customers", async (req, res) => {
 
 api.get("/balance", async (_req, res) => {
   const b = await balance();
-  res.json({ balance_usd: b, env: config().opensrsEnv });
+  const c = config();
+  res.json({ balance_usd: b, env: c.opensrsEnv, alert_below_usd: c.lowBalanceUsd });
+});
+
+const REPORT_DAYS = [7, 30, 90, 365];
+
+api.get("/report", async (req, res) => {
+  const asked = Number(str(req.query.days));
+  const days = REPORT_DAYS.includes(asked) ? asked : 7;
+  const now = Date.now();
+  res.json({ days, ...(await reportData(config(), now - days * 86_400_000, now)) });
 });
 
 /* ---------- the team ---------- */

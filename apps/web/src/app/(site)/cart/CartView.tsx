@@ -133,13 +133,13 @@ export function CartView() {
       aria-label={`Duration for ${item.domain}`}
       size="sm"
       value={String(item.term)}
-      options={TERMS.map((t) => ({
+      options={TERMS.filter((t) => !item.maxTerm || t <= item.maxTerm).map((t) => ({
         value: String(t),
         label: `${t} ${t === 1 ? "Year" : "Years"} - ${price(priceForTerm(t))}`,
       }))}
       onChange={(e) => {
         const term = Number(e.target.value) as Term;
-        cart.add({ domain: item.domain, service: item.service, term, amount: priceForTerm(term) });
+        cart.add({ domain: item.domain, service: item.service, term, amount: priceForTerm(term), maxTerm: item.maxTerm });
       }}
     />
   );
