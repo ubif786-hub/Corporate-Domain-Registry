@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
 import { CSSProperties } from "react";
-import { Button } from "@/components/Button";
-import { Card } from "@/components/Card";
 import { Container } from "@/components/Container";
 import { Heading } from "@/components/Heading";
-import { Row } from "@/components/Row";
-import { Column } from "@/components/Column";
 import { Section } from "@/components/Section";
 import { DomainSearchForm } from "./DomainSearchForm";
 import { HeroPlate } from "@/components/HeroPlate";
 import { assetBySlot } from "@/lib/assets";
-import { SERVICES, SITE } from "@/data/site";
+import { SITE } from "@/data/site";
 
 export const metadata: Metadata = {
   title: `${SITE.name}: domain registration, transfer and renewal`,
@@ -18,8 +14,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-/* The home page is three beats: the hero with one field, one sentence, three cards. That is the
-   whole page, on purpose; the client asked for bltz.com's simplicity and this is its anatomy.
+/* The home page is two beats: the hero with one field, and one sentence. That is the whole page,
+   on purpose; the client asked for bltz.com's simplicity. The Register and Renew cards came out on
+   4 Oct 2026: the renewal page is hidden (owner, call of 3 Oct), reached only by the link sent to
+   past buyers, and the search field above already registers.
 
    The hero field carries NO service as of 4 Sep 2026. It used to be hardcoded to "register",
    which meant the front door quietly made a choice for the visitor and the Search page then asked
@@ -91,25 +89,6 @@ const taglineStyle: CSSProperties = {
   color: "var(--text-positive-secondary)",
 };
 
-const cardBodyStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--flow-heading)",
-  height: "100%",
-};
-
-const cardCopyStyle: CSSProperties = {
-  margin: 0,
-  flex: "1 1 auto",
-  fontSize: "var(--type-md)",
-  lineHeight: "var(--leading-normal)",
-  color: "var(--text-positive-secondary)",
-};
-
-// Register, transfer and renew read apart by button weight, the way the reference separates them by
-// colour: the primary fill, the secondary outline, the ink fill.
-const VARIANT = { register: "primary", transfer: "secondary", renew: "ink" } as const;
-
 export default function HomePage() {
   return (
     <>
@@ -164,36 +143,12 @@ export default function HomePage() {
         </div>
       </Section>
 
-      <Section padding="compact" code="C2">
+      <Section padding="compact" background="none" code="C2">
         <Container size="md">
           <p style={taglineStyle}>{SITE.tagline}</p>
         </Container>
       </Section>
 
-      <Section padding="compact" as="div" code="E1">
-        <Container size="lg">
-          {/* Two columns, because SERVICES is two cards now (register and renew, matching the
-              reference). A three-column row would leave a dead third cell and shrink both cards
-              to a third of the width for no reason. */}
-          <Row cols={{ desktop: 2, tablet: 2, mobile: 1 }} gap="lg">
-            {SERVICES.map((s) => (
-              <Column key={s.id}>
-                <Card variant="content" surface="primary" elevation="subtle">
-                  <Card.Body>
-                    <div style={cardBodyStyle}>
-                      <Heading level={2} size={4}>{s.title}</Heading>
-                      <p style={cardCopyStyle}>{s.copy}</p>
-                      <Button variant={VARIANT[s.id]} href={`/${s.id}`} size="lg">
-                        {s.action}
-                      </Button>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Column>
-            ))}
-          </Row>
-        </Container>
-      </Section>
     </>
   );
 }

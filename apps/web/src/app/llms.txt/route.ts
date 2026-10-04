@@ -38,7 +38,6 @@ export async function GET() {
     `- [Search](${BASE}/search): check a domain.`,
     `- [Register](${BASE}/register)`,
     `- [Transfer](${BASE}/transfer)`,
-    `- [Renew](${BASE}/renew)`,
     `- [WHOIS](${BASE}/whois): record lookup, subject to the redaction above.`,
     `- [Registrant resources](${BASE}/registrant-resources): how records, redaction`,
     "  and transfers work.",

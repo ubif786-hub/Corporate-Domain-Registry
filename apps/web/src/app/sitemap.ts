@@ -22,9 +22,10 @@ import { LEGAL_DOCS } from "@/data/legal";
 //                          whose every entry redirects is a set of promises the site is not
 //                          keeping.
 //
-// /register, /transfer and /renew ARE listed. They are three named doors onto one search
-// experience, but each carries its own canonical and its own title, so each is a real address and
-// the one a person searching "transfer a domain" should land on.
+// /register and /transfer ARE listed. They are two named doors onto one search experience, but
+// each carries its own canonical and its own title, so each is a real address and the one a person
+// searching "transfer a domain" should land on. /renew is NOT: it is hidden (owner, 3 Oct 2026),
+// reached only by the link sent to past buyers, and carries a noindex.
 //
 // BASE is derived (18 Sep 2026); this fork has no custom domain yet (the HQ card carries none).
 // When one lands it is NEXT_PUBLIC_SITE_URL and nothing here changes. This used to be a literal,
@@ -36,7 +37,6 @@ const STATIC_PATHS = [
   { path: "/search", priority: 0.9 },
   { path: "/register", priority: 0.9 },
   { path: "/transfer", priority: 0.8 },
-  { path: "/renew", priority: 0.8 },
   { path: "/whois", priority: 0.8 },
   { path: "/contact", priority: 0.7 },
 ];

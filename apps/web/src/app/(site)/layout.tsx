@@ -27,11 +27,15 @@ export default function SiteLayout({
         <RegionProvider>
           <CartProvider>
             <AnalyticsBeacon />
-            <SiteHeader />
-            <main id="main" style={{ background: "var(--background-positive-secondary)" }}>
-              {children}
-            </main>
-            <SiteFooter />
+            {/* A screen-tall column, so the footer sits at the bottom of a short page (the home page
+                since its cards came out, 4 Oct 2026) instead of leaving bare ground under it. */}
+            <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh" }}>
+              <SiteHeader />
+              <main id="main" style={{ flex: "1 0 auto", background: "var(--background-positive-secondary)" }}>
+                {children}
+              </main>
+              <SiteFooter />
+            </div>
           </CartProvider>
         </RegionProvider>
       </ThemeProvider>

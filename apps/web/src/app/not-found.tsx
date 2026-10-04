@@ -59,9 +59,6 @@ export default function NotFound() {
               <Link href="/registrant-resources">Registrant Resources</Link>
             </li>
             <li>
-              <Link href="/renew">Renew</Link>
-            </li>
-            <li>
               <Link href="/search">Search</Link>
             </li>
             <li>

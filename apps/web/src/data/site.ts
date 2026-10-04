@@ -104,34 +104,6 @@ export const NAV_TABS = [
 
 export type Service = "register" | "transfer" | "renew";
 
-/** The cards under the home page search: REGISTER AND RENEW ONLY (owner call, 4 Sep 2026).
- *
- * There were three, one per service. The reference site carries exactly two, Register and Renew,
- * and does not surface transfer as a card at all -- verified in a real browser and confirmed by
- * the owner independently. Two is also the honest count now that renewal and transfer are ONE
- * action at the search result (see SearchPanel's header): a third card would advertise a choice
- * the flow no longer asks anyone to make.
- *
- * TRANSFER IS NOT RETIRED. /transfer is still a real page with its own heading, still reachable,
- * and a taken domain still offers transfer at the result. It simply stops being a front-door
- * card, exactly as on the reference. CDR sells the service; the home page just does not ask a
- * visitor to self-classify before they have searched anything.
- */
-export const SERVICES: { id: Service; title: string; copy: string; action: string }[] = [
-  {
-    id: "register",
-    title: "Register a domain",
-    copy: "Grab a new domain for that project you have been working on, and secure your online presence.",
-    action: "Register",
-  },
-  {
-    id: "renew",
-    title: "Renew your domain",
-    copy: "Renew the domains you already hold to keep your website online and available to everyone.",
-    action: "Renew",
-  },
-];
-
 /* THE PRICE LADDER, one to ten years, FLAT ACROSS EVERY EXTENSION AND EVERY SERVICE.
  *
  * These are the reference site's own published figures ($60 / 115 / 165 / 215 / 265 / 305 / 345 /

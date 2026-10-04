@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import { PagePanel } from "../PagePanel";
 import { RenewPanelFromUrl } from "../DomainFromUrl";
 
-/* The renewal page (RenewPanel): for domains registered with CDR. Not in the menu; the client
-   sends the link to past buyers, and the home page's Renew card leads here. */
+/* The renewal page (RenewPanel): for domains registered with CDR. Hidden (owner, call of 3 Oct
+   2026): nothing on the site links here and search engines are told not to index it; the client
+   sends the link to past buyers (Admin, Analytics, renewal list). */
 
 export const metadata: Metadata = {
   title: "Renew a domain",
   description: "Renew a domain registered with Corporate Domain Registry before it expires.",
   alternates: { canonical: "/renew" },
+  robots: { index: false },
 };
 
 export default function RenewPage() {
