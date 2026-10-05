@@ -1,14 +1,5 @@
-// The public records of a domain over RDAP, the successor to whois (RFC 9082/9083). IANA's
-// bootstrap file names the RDAP server of each extension; it is read once a day. A registry that
-// answers 404 has no record: the domain is not registered.
-//
-// TWO RECORDS (5 Oct 2026). For .com, .net, .org and most gTLDs the registry's record is the thin
-// one: registrar, dates, status, nameservers. It links ("related") to the registrar's record,
-// which adds the owner's organisation and location, the registrar's IANA ID, website and abuse
-// contact: what a registrar's own whois page shows. Both are read and merged; the registry wins
-// on dates and status, the registrar on the owner and its own contact. A slow or failing registrar
-// still returns the registry's record. Personal details are redacted by registrars (ICANN policy,
-// privacy law); those values are dropped rather than shown as "REDACTED".
+// A domain's public record over RDAP (the successor to whois): the registry's record, merged with
+// the registrar's record it links to. Redacted values are dropped; a 404 means not registered.
 
 const BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
 const DAY_MS = 86_400_000;
@@ -78,8 +69,7 @@ export interface RdapRecord {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
 
-// Placeholders registrars put where a value is hidden. Privacy-service names ("Contact Privacy
-// Inc.") are real published values and stay.
+// Placeholders for hidden values (privacy-service names like "Domains By Proxy" are real and stay).
 const HIDDEN = /redact|withheld|not disclosed|data protected|mask|gdpr|non-public|please query/i;
 
 /** A published value, or null when it is empty or a redaction placeholder. */
@@ -195,8 +185,7 @@ export function parseRdap(d: Json): RdapRecord {
   };
 }
 
-/** The registry's record filled in from the registrar's: the registry keeps dates, status and the
- *  registrar's name; the registrar supplies the owner and its own website and abuse contact. */
+/** Registry wins on dates, status and registrar name; the registrar on contacts and its own details. */
 export function mergeRdap(registry: RdapRecord, registrar: RdapRecord | null): RdapRecord {
   if (!registrar) return registry;
   return {
@@ -229,7 +218,7 @@ export function registrarLink(d: Json): string | null {
     try {
       const u = new URL(l.href);
       const host = u.hostname;
-      // Not an address inside a network: the link comes from a registry, but it is still fetched by this server.
+      // Public https hosts only: this server fetches it.
       if (u.protocol !== "https:" || !host.includes(".") || /^[\d.]+$/.test(host) || host.includes(":") || host === "localhost") continue;
       if (/\/domain\//i.test(u.pathname)) return u.toString();
     } catch { /* not a URL */ }
@@ -246,12 +235,13 @@ export type RdapResult =
   | { status: "registered"; record: RdapRecord }
   | { status: "available" | "unsupported" | "error" };
 
-// Answers kept 10 minutes per domain: registrars' RDAP servers rate-limit by address (Tucows
-// answers 429 after a few quick lookups), and a page reload should not flip the owner details off.
-// An answer missing the registrar's half is not kept, so the next lookup tries it again.
-// ponytail: in-process Map capped at 1000 entries, oldest dropped first; fine for one API process.
+// Complete answers cached 10 min (registrars rate-limit). ponytail: in-process, 1000 entries max.
 const CACHE_MS = 10 * 60_000;
 const cache = new Map<string, { at: number; result: RdapResult }>();
+
+// Registrar servers that never answer (GoDaddy blocks cloud IPs) are skipped for 30 min.
+const SKIP_MS = 30 * 60_000;
+const skipUntil = new Map<string, number>();
 
 export async function rdapDomain(domain: string): Promise<RdapResult> {
   const hit = cache.get(domain);
@@ -281,11 +271,14 @@ async function lookup(domain: string): Promise<{ result: RdapResult; complete: b
   }
   let registrar: RdapRecord | null = null;
   const link = registrarLink(registry);
-  if (link) {
+  const host = link ? new URL(link).hostname : "";
+  if (link && (skipUntil.get(host) ?? 0) <= Date.now()) {
     try {
       const r = await getJson(link, 6_000);
       if (r.body) registrar = parseRdap(r.body);
-    } catch { /* the registry's record alone */ }
+    } catch {
+      skipUntil.set(host, Date.now() + SKIP_MS); // no answer: the registry's record alone for a while
+    }
   }
   return done({ status: "registered", record: mergeRdap(parseRdap(registry), registrar) }, !link || registrar !== null);
 }
