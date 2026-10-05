@@ -3,7 +3,7 @@
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { eppStatus, type WhoisContact, type WhoisResponse } from "@cdr/shared";
+import { eppStatus, mergeRdap, parseRdap, type WhoisContact, type WhoisResponse } from "@cdr/shared";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { DataLabel } from "@/components/DataLabel";
@@ -45,6 +45,21 @@ type Phase =
   | { kind: "done"; record: WhoisResponse }
   | { kind: "failed"; domain: string; busy: boolean };
 
+/** The registrar's half from the visitor's browser, when the registrar blocked our server (GoDaddy
+ *  blocks cloud IPs, but its RDAP allows any origin). Without it the registry's record stands. */
+async function withRegistrarHalf(record: WhoisResponse, signal: AbortSignal): Promise<WhoisResponse> {
+  const url = record.registrar_record_url;
+  if (record.status !== "registered" || !url?.startsWith("https://")) return record;
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/rdap+json" }, signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]) });
+    if (!res.ok) return record;
+    return { ...record, ...mergeRdap(record, parseRdap(await res.json())), registrar_record_url: null };
+  } catch (e) {
+    if (signal.aborted) throw e;
+    return record;
+  }
+}
+
 /** Asks GET /api/whois/. Never throws, except when the caller aborts. */
 async function fetchWhois(domain: string, signal: AbortSignal): Promise<Phase> {
   try {
@@ -52,7 +67,8 @@ async function fetchWhois(domain: string, signal: AbortSignal): Promise<Phase> {
     if (res.status === 429) return { kind: "failed", domain, busy: true };
     if (!res.ok) return { kind: "failed", domain, busy: false };
     const record = (await res.json()) as WhoisResponse;
-    return record?.status === "error" ? { kind: "failed", domain, busy: false } : { kind: "done", record };
+    if (record?.status === "error") return { kind: "failed", domain, busy: false };
+    return { kind: "done", record: await withRegistrarHalf(record, signal) };
   } catch (e) {
     if (signal.aborted) throw e;
     return { kind: "failed", domain, busy: false };

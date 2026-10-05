@@ -3,6 +3,9 @@
 // charges and the price the page shows cannot drift apart.
 
 import catalogJson from "../catalog.json";
+import type { RdapRecord } from "./rdap";
+
+export * from "./rdap";
 
 export interface Catalog {
   chargeCurrency: string;
@@ -110,61 +113,16 @@ export interface RenewCheckResponse {
   prices?: Record<string, number>;
 }
 
-/** GET /api/whois/?domain= (the registry's RDAP record) */
-export interface WhoisContact {
-  name: string | null;
-  org: string | null;
-  address: string | null;
-  email: string | null;
-  phone: string | null;
-  /** a web form that forwards a message to the contact */
-  contact_url: string | null;
-}
-
-export interface WhoisResponse {
+/** GET /api/whois/?domain= (the registry's RDAP record merged with the registrar's) */
+export type WhoisResponse = RdapRecord & {
   domain: string;
   /** registered: a record exists; available: the registry has none; unsupported: the extension
    *  publishes no RDAP service */
   status: "registered" | "available" | "unsupported" | "invalid" | "error";
-  /** the registry's ID for the domain, e.g. 2932270036_DOMAIN_COM-VRSN */
-  registry_domain_id: string | null;
-  registrar: string | null;
-  /** the registrar's whois server, e.g. whois.godaddy.com */
-  registrar_whois: string | null;
-  registrar_iana_id: string | null;
-  registrar_url: string | null;
-  abuse_email: string | null;
-  abuse_phone: string | null;
-  /** The owner and the admin and tech contacts as published by the registrar (or a thick registry
-   *  such as CIRA); hidden personal details are left out, and null means nothing about one is public. */
-  registrant: WhoisContact | null;
-  admin: WhoisContact | null;
-  tech: WhoisContact | null;
-  created_at: string | null;
-  updated_at: string | null;
-  expires_at: string | null;
-  /** the registrar's own expiry date */
-  registrar_expires_at: string | null;
-  /** when the record was last refreshed ("Last update of whois database") */
-  record_updated_at: string | null;
-  /** ICANN's form for reporting wrong whois data */
-  complaint_url: string | null;
-  statuses: string[];
-  nameservers: string[];
-  /** true signed, false not signed, null not stated */
-  dnssec: boolean | null;
+  /** set when the server could not read the registrar's record: the page fetches it from the browser */
+  registrar_record_url: string | null;
   checked_at: string;
-}
-
-/** The EPP code of an RDAP status ("client transfer prohibited" -> "clientTransferProhibited",
- *  "active" -> "ok"), which names its explanation at https://icann.org/epp#<code>; null for the
- *  RDAP-only statuses that have no EPP code ("locked", "associated" and so on). */
-export function eppStatus(rdap: string): string | null {
-  const words = rdap.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.join(" ") === "active") return "ok";
-  const code = words.map((w, i) => (i ? w[0].toUpperCase() + w.slice(1) : w)).join("");
-  return /^(client|server)(Delete|Hold|Renew|Transfer|Update)Prohibited$|^(client|server)Hold$|^pending(Create|Delete|Renew|Restore|Transfer|Update)$|^(add|autoRenew|redemption|renew|transfer)Period$|^inactive$/.test(code) ? code : null;
-}
+};
 
 /** GET /api/domain-check/?domain= */
 export type CheckStatus = "available" | "taken" | "premium" | "unsupported" | "invalid" | "error";
