@@ -8,8 +8,8 @@
 // claim would put it back into circulation somewhere nobody can correct it, so this file states
 // the truth twice and tells a reader not to say otherwise. Approved by the owner, 17 Sep 2026.
 //
-// The page list is derived from the real routes; /cart and /login are the application and are
-// excluded here exactly as robots.ts excludes them.
+// The page list is derived from the real routes; /cart is the application and is excluded here
+// exactly as robots.ts excludes it.
 
 // This file used to hardcode https://domain-services-pearl.vercel.app while robots.ts and
 // sitemap.ts hardcoded https://domain-services-magenta-web.vercel.app: two different preview hosts

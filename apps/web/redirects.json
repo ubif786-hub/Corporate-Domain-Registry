@@ -15,11 +15,6 @@
     "permanent": true
   },
   {
-    "source": "/account",
-    "destination": "/login",
-    "permanent": true
-  },
-  {
     "source": "/r/:code",
     "destination": "/search",
     "permanent": false

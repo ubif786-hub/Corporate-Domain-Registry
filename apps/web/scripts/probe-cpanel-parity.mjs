@@ -30,7 +30,7 @@ const EXP = argOf("--export", "http://127.0.0.1:8099").replace(/\/$/, "");
 const DIR = argOf("--dir", ".parity");
 mkdirSync(DIR, { recursive: true });
 
-const PAGES = ["/", "/search", "/register", "/transfer", "/renew", "/whois", "/cart", "/checkout", "/contact", "/login", "/tos", "/privacy", "/disclaimer", "/dispute-policy", "/expired-registration-recovery", "/registrant-resources"];
+const PAGES = ["/", "/search", "/register", "/transfer", "/renew", "/whois", "/cart", "/checkout", "/contact", "/tos", "/privacy", "/disclaimer", "/dispute-policy", "/expired-registration-recovery", "/registrant-resources"];
 const WIDTHS = [1440, 390];
 const IPS = { CA: "99.224.0.1", US: "8.8.8.8", DE: "85.214.132.117" };
 

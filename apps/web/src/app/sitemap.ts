@@ -11,8 +11,8 @@ import { LEGAL_DOCS } from "@/data/legal";
 // moves, and a hand-typed copy here would be wrong the first time that happened.
 //
 // WHAT IS DELIBERATELY ABSENT.
-//   /cart, /login          transactional surfaces; a crawler landing on either finds a dead end
-//                          and a signed-out state, and neither is an answer to a search.
+//   /cart                  a transactional surface; a crawler landing on it finds a dead end,
+//                          not an answer to a search.
 //   /components, /style-guide  the design-system kit routes, dev surfaces that carry a page-level
 //                          noindex. A glob over app/ would sweep them, which is why the static
 //                          list is written out.

@@ -151,8 +151,8 @@ export function SiteHeader() {
             {/* NO SIGN-IN CHIP (owner call, 4 Sep 2026). There is no account system behind it
                 yet, and the reference site's header carries only the region flag and the cart.
                 A header chip that advertises an account a visitor cannot actually have is worse
-                than an absent one. /login still exists as a route and its form still renders;
-                it is simply unlinked from the chrome until accounts are real. */}
+                than an absent one. The unlinked /login page was removed too (5 Oct 2026); build
+                it again when accounts are real. */}
           </div>
         </div>
         <div style={stripStyle}>

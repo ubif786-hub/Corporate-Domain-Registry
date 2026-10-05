@@ -8,9 +8,9 @@ import { comingSoonRobots, isComingSoonGated } from "@/comingSoon";
 // permissive rather than repeating them as disallow rules: a noindex a crawler can read beats a
 // disallow that only stops it looking.
 //
-// /cart and /login are disallowed here instead, because those are the two surfaces where
-// crawling costs something: a crawler in the cart burns budget on a dead end, and /login is a
-// signed-out form that is never an answer to a search.
+// /cart and /admin are disallowed here instead: a crawler in the cart burns budget on a dead end,
+// and the admin is behind a sign-in. (/login, a customer sign-in with no accounts behind it, was
+// removed on 5 Oct 2026.)
 import { SITE_URL as BASE } from "@/lib/site-url";
 
 export default function robots(): MetadataRoute.Robots {
@@ -22,11 +22,11 @@ export default function robots(): MetadataRoute.Robots {
       // The wildcard first, then the answer-engine crawlers BY NAME. The wildcard already
       // allows them; naming them means a later decision to disallow some other bot cannot
       // catch these by accident (the zafiro pattern, adopted fleet-wide 17 Sep 2026).
-      { userAgent: "*", allow: "/", disallow: ["/cart", "/login", "/admin"] },
-      { userAgent: "GPTBot", allow: "/", disallow: ["/cart", "/login", "/admin"] },
-      { userAgent: "ClaudeBot", allow: "/", disallow: ["/cart", "/login", "/admin"] },
-      { userAgent: "PerplexityBot", allow: "/", disallow: ["/cart", "/login", "/admin"] },
-      { userAgent: "Google-Extended", allow: "/", disallow: ["/cart", "/login", "/admin"] },
+      { userAgent: "*", allow: "/", disallow: ["/cart", "/admin"] },
+      { userAgent: "GPTBot", allow: "/", disallow: ["/cart", "/admin"] },
+      { userAgent: "ClaudeBot", allow: "/", disallow: ["/cart", "/admin"] },
+      { userAgent: "PerplexityBot", allow: "/", disallow: ["/cart", "/admin"] },
+      { userAgent: "Google-Extended", allow: "/", disallow: ["/cart", "/admin"] },
     ],
     sitemap: `${BASE}/sitemap.xml`,
   };
