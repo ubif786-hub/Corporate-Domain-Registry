@@ -3,7 +3,7 @@
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { WhoisResponse } from "@cdr/shared";
+import { eppStatus, type WhoisContact, type WhoisResponse } from "@cdr/shared";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { DataLabel } from "@/components/DataLabel";
@@ -11,9 +11,10 @@ import { Heading } from "@/components/Heading";
 import { DomainSearchForm } from "../DomainSearchForm";
 import { formatDate } from "@/data/lookup";
 
-/* The whois field and the record it returns, live from the domain's registry (GET /api/whois/,
-   which reads the registry's RDAP record). Registrant contact details are redacted by the
-   registries, so the record is the registrar, the dates, the status codes and the nameservers. */
+/* The whois field and the record it returns, live (GET /api/whois/, which reads the registry's
+   RDAP record and the registrar's record it links to). Three groups, as a registrar's whois page
+   shows them: the domain, its owner as far as it is public, and the registrar. Personal details
+   the registrar hides (ICANN policy, privacy law) are left out, and the page says so. */
 
 const recordStyle: CSSProperties = {
   display: "flex",
@@ -25,9 +26,16 @@ const recordStyle: CSSProperties = {
   background: "var(--background-positive-secondary)",
 };
 const headStyle: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-sm)" };
-const dlStyle: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr", columnGap: "var(--space-lg)", rowGap: "var(--space-2xs)", margin: 0, fontSize: "var(--type-sm)" };
-const ddStyle: CSSProperties = { margin: 0, overflowWrap: "anywhere" };
+// Each row is a label and its value side by side, one label width for every group so the values
+// line up down the record. Where the two do not fit (a phone), the value wraps under its label
+// instead of squeezing long codes into broken words.
+const dlStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-2xs)", margin: 0, fontSize: "var(--type-sm)" };
+const rowStyle: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: "var(--space-lg)", rowGap: "var(--space-3xs)" };
+const dtStyle: CSSProperties = { flex: "0 0 8.5rem" };
+const ddStyle: CSSProperties = { margin: 0, flex: "1 1 14rem", minWidth: 0, overflowWrap: "anywhere" };
 const mutedStyle: CSSProperties = { margin: 0, fontSize: "var(--type-sm)", color: "var(--text-positive-tertiary)" };
+const statusListStyle: CSSProperties = { display: "flex", flexDirection: "column" };
+const groupStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-2xs)", paddingTop: "var(--space-sm)", borderTop: "var(--rule-weight) solid var(--border-positive-secondary)" };
 const linkStyle: CSSProperties = { color: "var(--text-positive-link)" };
 const bodyStyle: CSSProperties = { margin: 0, fontSize: "var(--type-md)", lineHeight: "var(--leading-normal)", color: "var(--text-positive-secondary)" };
 
@@ -102,12 +110,30 @@ export function WhoisLookup({ initial }: { initial: string }) {
 }
 
 function Record({ record }: { record: WhoisResponse }) {
-  const row = (label: string, value: string) => value ? (
-    <>
-      <dt><DataLabel tone="secondary">{label}</DataLabel></dt>
+  const row = (label: string, value: React.ReactNode) => value ? (
+    <div key={label} style={rowStyle}>
+      <dt style={dtStyle}><DataLabel tone="secondary">{label}</DataLabel></dt>
       <dd style={ddStyle}>{value}</dd>
-    </>
+    </div>
   ) : null;
+  const group = (title: string, rows: React.ReactNode[]) => rows.some(Boolean) ? (
+    <section style={groupStyle}>
+      <Heading level={3} size={6}>{title}</Heading>
+      <dl style={dlStyle}>{rows}</dl>
+    </section>
+  ) : null;
+  const owner = record.registrant;
+  const link = (href: string, text: string) => <a href={href} style={linkStyle} rel="noopener noreferrer" target="_blank">{text}</a>;
+  const contactRows = (c: WhoisContact | null) => [
+    row("Name", c?.name ?? ""),
+    row("Organisation", c?.org ?? ""),
+    row("Address", c?.address ?? ""),
+    row("Email", c?.email ? link(`mailto:${c.email}`, c.email) : ""),
+    row("Phone", c?.phone ?? ""),
+    row("Contact form", c?.contact_url ? link(c.contact_url, "Send a message through the registrar") : ""),
+  ];
+  // The registrar's expiry is shown when it is a different day from the registry's.
+  const registrarExpiry = record.registrar_expires_at && formatDate(record.registrar_expires_at) !== formatDate(record.expires_at) ? formatDate(record.registrar_expires_at) : "";
   const expired = record.expires_at !== null && Date.parse(record.expires_at) < Date.parse(record.checked_at);
   return (
     <div style={recordStyle} data-ds-whois={record.status}>
@@ -120,14 +146,42 @@ function Record({ record }: { record: WhoisResponse }) {
           : <Badge tone="warning" emphasis="solid">Not a domain</Badge>}
       </div>
       {record.status === "registered" ? (
-        <dl style={dlStyle}>
-          {row("Registrar", record.registrar ?? "")}
-          {row("Registered", formatDate(record.created_at))}
-          {row("Expires", formatDate(record.expires_at))}
-          {row("Updated", formatDate(record.updated_at))}
-          {row("Status", record.statuses.join(", "))}
-          {row("Nameservers", record.nameservers.join(", "))}
-        </dl>
+        <>
+          {group("Domain", [
+            row("Registry ID", record.registry_domain_id ?? ""),
+            row("Registered", formatDate(record.created_at)),
+            row("Expires", formatDate(record.expires_at)),
+            row("Registrar expiry", registrarExpiry),
+            row("Updated", formatDate(record.updated_at)),
+            row("Status", record.statuses.length ? (
+              <span style={statusListStyle}>
+                {record.statuses.map((st) => {
+                  const code = eppStatus(st);
+                  return <span key={st}>{code ? link(`https://icann.org/epp#${code}`, code) : st}</span>;
+                })}
+              </span>
+            ) : ""),
+            row("Nameservers", record.nameservers.join(", ")),
+            row("DNSSEC", record.dnssec === null ? "" : record.dnssec ? "Signed" : "Not signed"),
+          ])}
+          {group("Owner", contactRows(owner))}
+          {!owner?.email ? (
+            <p style={mutedStyle}>
+              The owner&apos;s personal details are kept private by their registrar, as privacy rules require.
+              {owner?.contact_url ? " Use the contact form to send them a message." : " To reach the owner, contact the registrar."}
+            </p>
+          ) : null}
+          {group("Admin contact", contactRows(record.admin))}
+          {group("Tech contact", contactRows(record.tech))}
+          {group("Registrar", [
+            row("Name", record.registrar ?? ""),
+            row("IANA ID", record.registrar_iana_id ?? ""),
+            row("Whois server", record.registrar_whois ?? ""),
+            row("Website", record.registrar_url ? link(record.registrar_url, record.registrar_url.replace(/^https?:\/\//, "").replace(/\/$/, "")) : ""),
+            row("Abuse email", record.abuse_email ? link(`mailto:${record.abuse_email}`, record.abuse_email) : ""),
+            row("Abuse phone", record.abuse_phone ?? ""),
+          ])}
+        </>
       ) : record.status === "available" ? (
         <p style={bodyStyle}>
           The registry has no record of this domain, so it is not registered.{" "}
@@ -138,7 +192,13 @@ function Record({ record }: { record: WhoisResponse }) {
       ) : (
         <p style={bodyStyle}>This does not look like a domain name. Enter it with its extension, like myawesomedomain.com.</p>
       )}
-      <p style={mutedStyle}>From the registry&apos;s public record, checked {formatDate(record.checked_at)}.</p>
+      {record.status === "registered" && record.complaint_url ? (
+        <p style={mutedStyle}>Something in this record wrong? Report it to ICANN: {link(record.complaint_url, "whois inaccuracy complaint form")}.</p>
+      ) : null}
+      <p style={mutedStyle}>
+        From the public records of the registry and the registrar, checked {formatDate(record.checked_at)}
+        {record.record_updated_at ? `; the registrar's record was last updated ${formatDate(record.record_updated_at)}` : ""}.
+      </p>
     </div>
   );
 }

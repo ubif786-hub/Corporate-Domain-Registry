@@ -1,6 +1,14 @@
-// The registries' public records over RDAP, the successor to whois (RFC 9082/9083). IANA's
+// The public records of a domain over RDAP, the successor to whois (RFC 9082/9083). IANA's
 // bootstrap file names the RDAP server of each extension; it is read once a day. A registry that
 // answers 404 has no record: the domain is not registered.
+//
+// TWO RECORDS (5 Oct 2026). For .com, .net, .org and most gTLDs the registry's record is the thin
+// one: registrar, dates, status, nameservers. It links ("related") to the registrar's record,
+// which adds the owner's organisation and location, the registrar's IANA ID, website and abuse
+// contact: what a registrar's own whois page shows. Both are read and merged; the registry wins
+// on dates and status, the registrar on the owner and its own contact. A slow or failing registrar
+// still returns the registry's record. Personal details are redacted by registrars (ICANN policy,
+// privacy law); those values are dropped rather than shown as "REDACTED".
 
 const BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
 const DAY_MS = 86_400_000;
@@ -27,57 +35,257 @@ async function serverFor(tld: string): Promise<string | null | undefined> {
   return servers.byTld.get(tld) ?? null;
 }
 
+export interface RdapContact {
+  name: string | null;
+  org: string | null;
+  address: string | null;
+  email: string | null;
+  phone: string | null;
+  /** A web form that forwards a message to the contact, when the registrar offers one. */
+  contact_url: string | null;
+}
+
 export interface RdapRecord {
+  /** The registry's own ID for the domain ("2932270036_DOMAIN_COM-VRSN"). */
+  registry_domain_id: string | null;
   registrar: string | null;
+  /** The registrar's port-43 whois server ("whois.godaddy.com"). */
+  registrar_whois: string | null;
+  registrar_iana_id: string | null;
+  registrar_url: string | null;
+  abuse_email: string | null;
+  abuse_phone: string | null;
+  /** The owner and the admin and tech contacts as published; null when nothing about one is public. */
+  registrant: RdapContact | null;
+  admin: RdapContact | null;
+  tech: RdapContact | null;
   created_at: string | null;
   updated_at: string | null;
+  /** The registry's expiry date. */
   expires_at: string | null;
+  /** The registrar's own expiry date ("Registrar Registration Expiration Date"). */
+  registrar_expires_at: string | null;
+  /** When the record itself was last refreshed ("Last update of whois database"). */
+  record_updated_at: string | null;
+  /** ICANN's form for reporting wrong whois data, from the record's notices. */
+  complaint_url: string | null;
   statuses: string[];
   nameservers: string[];
+  /** DNSSEC: true signed, false not signed, null not stated. */
+  dnssec: boolean | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
 
-/** The fields the whois page shows, out of an RDAP domain object. */
+// Placeholders registrars put where a value is hidden. Privacy-service names ("Contact Privacy
+// Inc.") are real published values and stay.
+const HIDDEN = /redact|withheld|not disclosed|data protected|mask|gdpr|non-public|please query/i;
+
+/** A published value, or null when it is empty or a redaction placeholder. */
+function clean(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.replace(/^(tel|mailto):/i, "").trim();
+  return s && !HIDDEN.test(s) ? s : null;
+}
+
+const countryName = (() => {
+  try {
+    const names = new Intl.DisplayNames(["en"], { type: "region" });
+    return (cc: string) => names.of(cc.toUpperCase()) ?? cc.toUpperCase();
+  } catch {
+    return (cc: string) => cc.toUpperCase();
+  }
+})();
+
+/** Every entity in the object, nested ones included (the abuse contact sits inside the registrar). */
+function entities(d: Json): Json[] {
+  const out: Json[] = [];
+  const walk = (list: unknown) => {
+    if (!Array.isArray(list)) return;
+    for (const e of list) { out.push(e); walk(e?.entities); }
+  };
+  walk(d?.entities);
+  return out;
+}
+
+const withRole = (d: Json, role: string): Json | undefined =>
+  entities(d).find((e) => Array.isArray(e?.roles) && e.roles.includes(role));
+
+function vcard(e: Json, name: string): Json[] | undefined {
+  const fields: Json[] = Array.isArray(e?.vcardArray?.[1]) ? e.vcardArray[1] : [];
+  return fields.find((f) => Array.isArray(f) && f[0] === name);
+}
+
+/** "Street, City, Region, Postcode, Country" from a vCard adr, the hidden parts left out. */
+function address(e: Json): string | null {
+  const f = vcard(e, "adr");
+  if (!f) return null;
+  const parts: unknown[] = Array.isArray(f[3]) ? f[3] : [];
+  const flat = (p: unknown): string[] => (Array.isArray(p) ? p.flatMap(flat) : [clean(p)].filter((x): x is string => !!x));
+  const lines = [...flat(parts[2]), ...flat(parts[3]), ...flat(parts[4]), ...flat(parts[5])];
+  const cc = typeof f[1]?.cc === "string" ? f[1].cc : null;
+  const country = cc ? countryName(cc) : flat(parts[6])[0] ?? null;
+  if (country) lines.push(country);
+  return lines.length ? lines.join(", ") : null;
+}
+
+function contact(e: Json | undefined): RdapContact | null {
+  if (!e) return null;
+  const c: RdapContact = {
+    name: clean(vcard(e, "fn")?.[3]),
+    org: clean(vcard(e, "org")?.[3]),
+    address: address(e),
+    email: clean(vcard(e, "email")?.[3]),
+    phone: clean(vcard(e, "tel")?.[3]),
+    contact_url: httpUrl(vcard(e, "contact-uri")?.[3]),
+  };
+  return Object.values(c).some(Boolean) ? c : null;
+}
+
+function httpUrl(v: unknown): string | null {
+  const s = clean(v);
+  return s && /^https?:\/\//i.test(s) ? s : null;
+}
+
+/** The registrar's website: its "about" link, or the vCard url. RDAP server addresses are not websites. */
+function website(e: Json | undefined): string | null {
+  if (!e) return null;
+  const about = (Array.isArray(e.links) ? e.links : []).find((l: Json) => l?.rel === "about")?.href;
+  for (const u of [about, vcard(e, "url")?.[3]]) {
+    const s = clean(u);
+    if (s && /^https?:\/\//i.test(s) && !/rdap/i.test(s)) return s;
+  }
+  return null;
+}
+
+/** The fields the whois page shows, out of one RDAP domain object. */
 export function parseRdap(d: Json): RdapRecord {
-  const event = (action: string): string | null => {
-    const e = (Array.isArray(d?.events) ? d.events : []).find((x: Json) => x?.eventAction === action);
+  const event = (...actions: string[]): string | null => {
+    const e = (Array.isArray(d?.events) ? d.events : []).find((x: Json) => actions.includes(x?.eventAction));
     const t = e ? Date.parse(e.eventDate) : NaN;
     return Number.isNaN(t) ? null : new Date(t).toISOString();
   };
-  const registrarEntity = (Array.isArray(d?.entities) ? d.entities : []).find((e: Json) => Array.isArray(e?.roles) && e.roles.includes("registrar"));
-  const vcard: Json[] = Array.isArray(registrarEntity?.vcardArray?.[1]) ? registrarEntity.vcardArray[1] : [];
-  const fn = vcard.find((f) => Array.isArray(f) && f[0] === "fn");
+  const registrar = withRole(d, "registrar");
+  const abuse = contact(withRole(d, "abuse"));
+  const iana = (Array.isArray(registrar?.publicIds) ? registrar.publicIds : []).find((p: Json) => /iana/i.test(p?.type ?? ""));
+  const signed = d?.secureDNS?.delegationSigned;
   return {
-    registrar: typeof fn?.[3] === "string" && fn[3].trim() ? fn[3].trim() : null,
+    registry_domain_id: clean(d?.handle),
+    registrar: clean(vcard(registrar, "fn")?.[3]) ?? clean(vcard(registrar, "org")?.[3]),
+    registrar_whois: clean(d?.port43),
+    registrar_iana_id: clean(String(iana?.identifier ?? "")),
+    registrar_url: website(registrar),
+    abuse_email: abuse?.email ?? null,
+    abuse_phone: abuse?.phone ?? null,
+    registrant: contact(withRole(d, "registrant")),
+    admin: contact(withRole(d, "administrative")),
+    tech: contact(withRole(d, "technical")),
     created_at: event("registration"),
     updated_at: event("last changed"),
-    expires_at: event("expiration"),
+    expires_at: event("expiration", "registrar expiration"),
+    registrar_expires_at: event("registrar expiration"),
+    record_updated_at: event("last update of RDAP database"),
+    complaint_url: httpUrl((Array.isArray(d?.notices) ? d.notices : []).find((n: Json) => /inaccura/i.test(n?.title ?? ""))?.links?.[0]?.href),
     statuses: (Array.isArray(d?.status) ? d.status : []).filter((s: unknown) => typeof s === "string"),
     nameservers: (Array.isArray(d?.nameservers) ? d.nameservers : [])
       .map((n: Json) => (typeof n?.ldhName === "string" ? n.ldhName.toLowerCase() : ""))
       .filter(Boolean),
+    dnssec: typeof signed === "boolean" ? signed : null,
   };
+}
+
+/** The registry's record filled in from the registrar's: the registry keeps dates, status and the
+ *  registrar's name; the registrar supplies the owner and its own website and abuse contact. */
+export function mergeRdap(registry: RdapRecord, registrar: RdapRecord | null): RdapRecord {
+  if (!registrar) return registry;
+  return {
+    registry_domain_id: registry.registry_domain_id ?? registrar.registry_domain_id,
+    registrar: registry.registrar ?? registrar.registrar,
+    registrar_whois: registrar.registrar_whois ?? registry.registrar_whois,
+    registrar_iana_id: registry.registrar_iana_id ?? registrar.registrar_iana_id,
+    registrar_url: registrar.registrar_url ?? registry.registrar_url,
+    abuse_email: registrar.abuse_email ?? registry.abuse_email,
+    abuse_phone: registrar.abuse_phone ?? registry.abuse_phone,
+    registrant: registrar.registrant ?? registry.registrant,
+    admin: registrar.admin ?? registry.admin,
+    tech: registrar.tech ?? registry.tech,
+    created_at: registry.created_at ?? registrar.created_at,
+    updated_at: registry.updated_at ?? registrar.updated_at,
+    expires_at: registry.expires_at ?? registrar.expires_at,
+    registrar_expires_at: registrar.registrar_expires_at ?? registry.registrar_expires_at,
+    record_updated_at: registrar.record_updated_at ?? registry.record_updated_at,
+    complaint_url: registrar.complaint_url ?? registry.complaint_url,
+    statuses: registry.statuses.length ? registry.statuses : registrar.statuses,
+    nameservers: registry.nameservers.length ? registry.nameservers : registrar.nameservers,
+    dnssec: registry.dnssec ?? registrar.dnssec,
+  };
+}
+
+/** The registrar's record URL from the registry's "related" link: https, a public host name. */
+export function registrarLink(d: Json): string | null {
+  for (const l of Array.isArray(d?.links) ? d.links : []) {
+    if (l?.rel !== "related" || typeof l.href !== "string") continue;
+    try {
+      const u = new URL(l.href);
+      const host = u.hostname;
+      // Not an address inside a network: the link comes from a registry, but it is still fetched by this server.
+      if (u.protocol !== "https:" || !host.includes(".") || /^[\d.]+$/.test(host) || host.includes(":") || host === "localhost") continue;
+      if (/\/domain\//i.test(u.pathname)) return u.toString();
+    } catch { /* not a URL */ }
+  }
+  return null;
+}
+
+async function getJson(url: string, ms: number): Promise<{ status: number; body?: Json }> {
+  const res = await fetch(url, { headers: { Accept: "application/rdap+json" }, signal: AbortSignal.timeout(ms) });
+  return res.ok ? { status: res.status, body: await res.json() } : { status: res.status };
 }
 
 export type RdapResult =
   | { status: "registered"; record: RdapRecord }
   | { status: "available" | "unsupported" | "error" };
 
+// Answers kept 10 minutes per domain: registrars' RDAP servers rate-limit by address (Tucows
+// answers 429 after a few quick lookups), and a page reload should not flip the owner details off.
+// An answer missing the registrar's half is not kept, so the next lookup tries it again.
+// ponytail: in-process Map capped at 1000 entries, oldest dropped first; fine for one API process.
+const CACHE_MS = 10 * 60_000;
+const cache = new Map<string, { at: number; result: RdapResult }>();
+
 export async function rdapDomain(domain: string): Promise<RdapResult> {
-  const base = await serverFor(domain.slice(domain.lastIndexOf(".") + 1));
-  if (base === undefined) return { status: "error" };
-  if (base === null) return { status: "unsupported" };
-  try {
-    const res = await fetch(base + "domain/" + encodeURIComponent(domain), {
-      headers: { Accept: "application/rdap+json" },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (res.status === 404) return { status: "available" };
-    if (!res.ok) return { status: "error" };
-    return { status: "registered", record: parseRdap(await res.json()) };
-  } catch {
-    return { status: "error" };
+  const hit = cache.get(domain);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.result;
+  const { result, complete } = await lookup(domain);
+  if (complete) {
+    cache.delete(domain);
+    cache.set(domain, { at: Date.now(), result });
+    if (cache.size > 1000) cache.delete(cache.keys().next().value as string);
   }
+  return result;
+}
+
+async function lookup(domain: string): Promise<{ result: RdapResult; complete: boolean }> {
+  const done = (result: RdapResult, complete = true) => ({ result, complete });
+  const base = await serverFor(domain.slice(domain.lastIndexOf(".") + 1));
+  if (base === undefined) return done({ status: "error" }, false);
+  if (base === null) return done({ status: "unsupported" });
+  let registry: Json;
+  try {
+    const r = await getJson(base + "domain/" + encodeURIComponent(domain), 10_000);
+    if (r.status === 404) return done({ status: "available" });
+    if (!r.body) return done({ status: "error" }, false);
+    registry = r.body;
+  } catch {
+    return done({ status: "error" }, false);
+  }
+  let registrar: RdapRecord | null = null;
+  const link = registrarLink(registry);
+  if (link) {
+    try {
+      const r = await getJson(link, 6_000);
+      if (r.body) registrar = parseRdap(r.body);
+    } catch { /* the registry's record alone */ }
+  }
+  return done({ status: "registered", record: mergeRdap(parseRdap(registry), registrar) }, !link || registrar !== null);
 }
