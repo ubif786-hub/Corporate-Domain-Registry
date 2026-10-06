@@ -19,6 +19,7 @@ export const ORDER_STATUS: Record<string, Wording> = {
   amount_mismatch: { label: "Amount mismatch", tone: "error", explain: "Stripe reported a different amount from the order. Nothing was registered. Check the payment in Stripe." },
   settle_error: { label: "Charge problem", tone: "error", explain: "The domains were handled but charging or releasing the card hold failed. Use “Run next step now” or check Stripe." },
   needs_review: { label: "Needs review", tone: "error", explain: "Something unexpected happened. Check the history below and the order in Tucows and Stripe." },
+  transferring: { label: "Transferring", tone: "info", explain: "Paid. Waiting for the customer's transfer codes, or for the moves to finish. The customer gets reminders, and a transfer that never goes through is refunded on its own." },
 };
 
 export const LINE_STATE: Record<string, Wording> = {
@@ -28,13 +29,15 @@ export const LINE_STATE: Record<string, Wording> = {
   pending: { label: "Waiting on registry", tone: "warning", explain: "" },
   failed: { label: "Not registered", tone: "error", explain: "" },
   unknown: { label: "Check Tucows", tone: "error", explain: "Tucows did not answer clearly. Look the domain up in the Tucows panel before trying again." },
+  awaiting_code: { label: "Waiting for code", tone: "warning", explain: "The customer has not sent a working transfer code yet." },
 };
 
 export const FAIL_REASON: Record<string, string> = {
   taken: "Someone registered it first",
   tucows_on_hold: "Tucows held it: top up the Tucows balance",
-  rejected: "The registry refused the details",
+  rejected: "The registry refused the details or the transfer codes",
   error: "Tucows answered with an error",
+  no_code: "No transfer code in time: refunded",
 };
 
 export const AUDIT_ACTION: Record<string, string> = {
@@ -62,10 +65,14 @@ export function statusWording(status: string): Wording {
   return ORDER_STATUS[status] ?? { label: status.replace(/_/g, " "), tone: "neutral", explain: "" };
 }
 
-const RENEW_LABEL: Record<string, string> = { registering: "Renewing", registered: "Renewed", failed: "Not renewed" };
+const SERVICE_LABEL: Record<string, Record<string, string>> = {
+  renew: { registering: "Renewing", registered: "Renewed", failed: "Not renewed" },
+  transfer: { new: "Code received", registering: "Sending transfer", pending: "Moving", registered: "Moved", failed: "Not moved" },
+};
 
-/** A renewal reuses the registration states ("registered" means renewed). */
+/** Renewals and transfers reuse the registration states ("registered" means renewed or moved). */
 export function lineWording(state: string, service = "register"): Wording {
   const w = LINE_STATE[state] ?? { label: state, tone: "neutral", explain: "" };
-  return service === "renew" && RENEW_LABEL[state] ? { ...w, label: RENEW_LABEL[state] } : w;
+  const label = SERVICE_LABEL[service]?.[state];
+  return label ? { ...w, label } : w;
 }

@@ -22,13 +22,10 @@
 // the expiry year seen at checkout, so Tucows refuses a repeat once one went through (465); a lost
 // reply is settled by reading the expiry back from Tucows.
 //
-// TRANSFERS (service "transfer") start as awaiting_code: the customer sends the code from their
-// current company after paying (transfer.routes.ts), up to transferCodeDays. That is far past the
-// card hold, so a transfer is charged with the rest of the order (status "transferring") and
-// refunded if it never goes through. Then new -> registering -> pending (Tucows moving it) ->
-// registered (moved, with the paid years beyond the one a move adds renewed on top). A refused
-// code sends the line back to awaiting_code, up to MAX_ATTEMPTS codes. A lost reply is settled with
-// check_transfer before anything is sent again.
+// TRANSFERS wait for the customer's code (awaiting_code), which can take longer than the card
+// hold, so they are charged with the order (status "transferring") and refunded if they fail.
+// A refused code goes back to awaiting_code, up to MAX_ATTEMPTS. A lost reply is checked with
+// check_transfer before anything is resent.
 //
 // CARD HOLDS LAST SEVEN DAYS. An order still pending on day six is settled anyway: registered and
 // still-pending names are charged, and CDR is told to check.
@@ -39,12 +36,12 @@ import { money } from "../../core/money";
 import { isoNow, sleep, toUnix, unixNow } from "../../core/time";
 import * as opensrs from "../../integrations/opensrs/client";
 import { stripe } from "../../integrations/stripe/client";
+import { transferNotices } from "../transfer/transfer.emails";
 import { notifyCheck, sendFinalEmails } from "./order.emails";
 import { dropTransferCode, note, readOrder, transferCode, updateOrder, withDriveLock } from "./order.store";
-import type { LineTransfer, Order, OrderLine } from "./order.types";
+import { MAX_ATTEMPTS, type LineTransfer, type Order, type OrderLine } from "./order.types";
 
 export const DRIVABLE: readonly OrderStatus[] = ["authorized", "fulfilling", "pending", "transferring", "settle_error"];
-const MAX_ATTEMPTS = 3;
 const SETTLE_AFTER_SECONDS = 6 * 86_400;
 
 /* ---------- the payment ---------- */
@@ -330,7 +327,7 @@ async function renewLine(id: string, i: number, line: OrderLine): Promise<void> 
 
 /* ---------- transfers ---------- */
 
-/** Moves one transfer one step. The code is read from its own table and dropped once Tucows has it. */
+/** Moves a transfer one step. */
 async function transferLine(id: string, i: number, order: Order, line: OrderLine): Promise<void> {
   const t: LineTransfer = line.transfer ?? {};
 
@@ -375,7 +372,7 @@ async function transferLine(id: string, i: number, order: Order, line: OrderLine
   }
 
   if (line.state === "registering" || line.state === "unknown") {
-    // Did the last send reach Tucows? Only a transfer state from around that send counts.
+    // Did the last send reach Tucows? Only trust a state from around that time.
     const st = await opensrs.transferStatus(line.domain);
     if (!st) return; // Tucows not reachable: try again on the next pass
     const fresh = st.at !== null && st.at >= (toUnix(line.attempted_at) ?? 0) - 300;
@@ -414,17 +411,16 @@ async function transferLine(id: string, i: number, order: Order, line: OrderLine
   }
 }
 
-/** The code did not work, or the move was cancelled: wait for a new code, until the tries run out. */
+/** Code refused (`tucows` set) or transfer cancelled: wait for a new code, or fail after MAX_ATTEMPTS. */
 async function codeRefused(id: string, i: number, attempts: number, t: LineTransfer, why: string, tucows?: OrderLine["opensrs"]): Promise<void> {
   await dropTransferCode(id, i);
-  const fields: Partial<OrderLine> = { transfer: { ...t, status: "cancelled", last_error: why } };
+  const fields: Partial<OrderLine> = { transfer: { ...t, status: tucows ? "refused" : "cancelled", last_error: why, error_told: false } };
   if (tucows) fields.opensrs = tucows;
   if (attempts >= MAX_ATTEMPTS) await setLine(id, i, { ...fields, state: "failed", reason: "rejected" }, `${why} Gave up after ${MAX_ATTEMPTS} codes; it will be refunded.`);
   else await setLine(id, i, { ...fields, state: "awaiting_code" }, `${why} Waiting for a new code.`);
 }
 
-/** After the move, the paid years it did not add, renewed from the new expiry. A lost reply is
- *  settled by reading the expiry back first, so the years are never added twice. */
+/** Renews the paid years the move didn't add. Reads the expiry first so it never renews twice. */
 async function addPaidYears(id: string, i: number, line: OrderLine, t: LineTransfer): Promise<void> {
   const from = t.completed_expiry as string;
   const fromYear = new Date(from).getUTCFullYear();
@@ -453,8 +449,8 @@ async function addPaidYears(id: string, i: number, line: OrderLine, t: LineTrans
 /* ---------- the money ---------- */
 
 /** When every line is final (or the hold is about to lapse), take the money for what registered
- *  and release the rest, then email the customer and CDR once. Transfers still waiting are charged
- *  now and refunded later if they never go through (closeTransfers). */
+ *  and release the rest, then email the customer and CDR once. Open transfers are charged now and
+ *  refunded later if they fail. */
 async function settle(id: string): Promise<OrderStatus | null> {
   const order = await readOrder(id);
   if (!order) return null;
@@ -515,7 +511,7 @@ async function settle(id: string): Promise<OrderStatus | null> {
     o.stripe.settled_at = isoNow();
     delete o.stripe.settle_error;
     if (forced) o.settled_early = true;
-    // Each waiting transfer's share of the charge, which is what its refund would be.
+    // Each transfer's share of the charge, i.e. its refund if it fails.
     for (const l of o.lines) {
       if (isTransfer(l) && l.state !== "failed" && o.subtotal_cents > 0) l.transfer = { ...l.transfer, charged_cents: Math.round((authorized * l.amount_cents) / o.subtotal_cents) };
     }
@@ -523,11 +519,12 @@ async function settle(id: string): Promise<OrderStatus | null> {
     return o;
   });
   if (settled && !transfers) await sendFinalEmails(settled);
+  if (settled && transfers) await transferNotices(id);
   return status;
 }
 
-/** After the charge: refund each transfer that ended without moving, and close the order once
- *  every transfer is done. A refund Stripe refuses is retried on the next pass; CDR is told once. */
+/** Refunds failed transfers, emails the customer, and closes the order once every transfer is done.
+ *  A refused refund is retried next pass. */
 async function closeTransfers(order: Order): Promise<OrderStatus> {
   const id = order.id;
   const owed = (l: OrderLine) => isTransfer(l) && l.state === "failed" && (l.transfer?.charged_cents ?? 0) > 0 && !l.transfer?.refunded_cents;
@@ -562,8 +559,9 @@ async function closeTransfers(order: Order): Promise<OrderStatus> {
     });
   }
 
+  await transferNotices(id);
   const now = await readOrder(id);
-  if (!now || now.lines.some((l) => !isFinal(l) || owed(l))) return "transferring";
+  if (!now || now.lines.some((l) => !isFinal(l) || owed(l) || (isTransfer(l) && !l.transfer?.closed_told))) return "transferring";
   const registered = now.lines.filter((l) => l.state === "registered").length;
   const status: OrderStatus = now.settled_early ? "needs_review" : registered === now.lines.length ? "registered" : registered ? "partially_registered" : "failed";
   const closed = await updateOrder(id, (o) => {

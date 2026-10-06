@@ -8,7 +8,7 @@ import { FAIL_REASON, lineWording } from "../../lib/words";
 import { Empty, ErrorNotice, LineBadge, PageHead, Pager, Panel, qs, SearchBox, SkelRows, TestTag, useQueryState } from "../../ui/bits";
 
 const KEYS = ["q", "state", "page"] as const;
-const STATES = ["registered", "pending", "failed", "unknown", "registering", "new"];
+const STATES = ["registered", "pending", "awaiting_code", "failed", "unknown", "registering", "new"];
 
 export function DomainsView() {
   const [f, set, ready] = useQueryState(KEYS);

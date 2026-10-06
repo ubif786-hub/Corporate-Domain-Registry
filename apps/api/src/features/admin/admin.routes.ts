@@ -186,7 +186,7 @@ api.get("/orders/:id", async (req, res) => {
   const id = str(req.params.id);
   const order = isValidOrderId(id) ? await readOrder(id) : null;
   if (!order) throw new HttpError(404, "not_found", "No order with that number.");
-  res.json({ order, can_continue: DRIVABLE.includes(order.status) });
+  res.json({ order, can_continue: DRIVABLE.includes(order.status), code_days: config().transferCodeDays });
 });
 
 api.post("/orders/:id/continue", async (req, res) => {
@@ -195,7 +195,7 @@ api.post("/orders/:id/continue", async (req, res) => {
   const outcome = await fulfil(id, 25);
   await audit("order_driven", me(req).user.id, ip(req), { order: id, outcome });
   const order = await readOrder(id);
-  res.json({ outcome, order, can_continue: order ? DRIVABLE.includes(order.status) : false });
+  res.json({ outcome, order, can_continue: order ? DRIVABLE.includes(order.status) : false, code_days: config().transferCodeDays });
 });
 
 api.get("/export.csv", async (req, res) => {

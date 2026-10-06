@@ -1,27 +1,36 @@
 import type { CheckoutRegistrant, Currency, LineService, LineState, OrderStatus } from "@cdr/shared";
 
+/** Tries per line: registrations sent, or transfer codes used. */
+export const MAX_ATTEMPTS = 3;
+
 /** no_code: a paid transfer whose code never came; it is refunded. */
 export type FailReason = "taken" | "tucows_on_hold" | "rejected" | "error" | "no_code";
 
-/** A transfer's progress beyond its line state. The customer's code is NOT here: it is kept in its
- *  own table (order.store.ts) so it never reaches the admin pages, the CSV or a log. */
+/** Transfer progress. The code itself is never stored here (see transfer_codes). */
 export interface LineTransfer {
-  /** Why the last code did not work, shown on the code page while a new one is awaited. */
+  /** Why the last code failed. */
   last_error?: string;
-  /** Tucows' transfer state as last seen (check_transfer). */
+  /** Last check_transfer state, or "refused". */
   status?: string;
-  /** The expiry right after the move, and the paid years still to add to it with a renewal. */
+  /** Expiry right after the move, and the paid years still to renew. */
   completed_expiry?: string;
   extra_years?: number;
-  /** What this line cost the card (its share of a promotion included), set when the order is charged. */
+  /** This line's share of the charge (after any promotion). */
   charged_cents?: number;
   refunded_cents?: number;
   refund_id?: string;
+  /** Registrar at checkout, from RDAP. */
+  from_registrar?: string;
+  /** Which emails went out (transfer.emails.ts). */
+  asked_at?: string;
+  reminded?: number;
+  error_told?: boolean;
+  closed_told?: boolean;
 }
 
 export interface OrderLine {
   domain: string;
-  /** A renewal or a transfer reuses the registration states: "registered" means renewed or transferred. */
+  /** "registered" also means renewed or transferred. */
   service: LineService;
   label: string;
   term: number;
@@ -30,9 +39,8 @@ export interface OrderLine {
   attempts: number;
   attempted_at?: string;
   registered_at?: string;
-  /** The domain's expiry date as last known. A renewal carries the date Tucows reported at checkout
-   *  (its year guards against renewing twice) until it goes through, then the new date; a transfer
-   *  the registry's date at checkout, so the years the move added can be counted. */
+  /** Last known expiry. Renewals and transfers keep the checkout date until done (it guards
+   *  against renewing twice and counts the years a move added). */
   expires_at?: string;
   reason?: FailReason;
   opensrs?: {

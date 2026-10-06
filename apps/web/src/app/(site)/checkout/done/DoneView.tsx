@@ -12,8 +12,8 @@ import { useCart } from "../../CartProvider";
  * and the token Stripe carried back in the address, and shows what the server knows: payment
  * confirmed, each domain registering, registered or not, and what was charged. Polling it also
  * nudges the order along (the server registers while the page waits), so a customer who stays
- * sees the result; one who leaves gets the same result by email. A transfer waits days for the
- * customer's code, so polling stops once the order is "transferring" and the email takes over.
+ * sees the result; one who leaves gets the same result by email. Polling stops at "transferring":
+ * transfers take days and continue by email.
  *
  * The cart is emptied only once the server confirms the payment, so a checkout that expired or
  * failed keeps the cart for another try. */

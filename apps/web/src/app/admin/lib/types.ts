@@ -43,6 +43,10 @@ export interface OrderLine {
   domain: string; service: string; label: string; term: number; amount_cents: number; state: string; attempts: number;
   attempted_at?: string; registered_at?: string; expires_at?: string; reason?: string;
   opensrs?: { order_id: string | null; domain_id?: string | null; code?: number; text?: string };
+  transfer?: {
+    from_registrar?: string; last_error?: string; status?: string; asked_at?: string; reminded?: number;
+    charged_cents?: number; refunded_cents?: number; refund_id?: string;
+  };
 }
 
 export interface Order {
@@ -61,13 +65,14 @@ export interface Order {
   agreement: { accepted_at: string; document: string; url: string };
   stripe: {
     session_id?: string; payment_intent?: string; amount_subtotal?: number; amount_discount?: number;
-    amount_authorized?: number; authorized_at?: string; amount_captured?: number; settled_at?: string; settle_error?: string;
+    amount_authorized?: number; authorized_at?: string; amount_captured?: number; amount_refunded?: number; settled_at?: string; settle_error?: string;
     customer?: { email: string | null; name: string | null };
   };
   log: string[];
 }
 
-export interface OrderDetail { order: Order; can_continue: boolean }
+/** code_days: how long a paid transfer waits for its code before it is refunded. */
+export interface OrderDetail { order: Order; can_continue: boolean; code_days?: number }
 
 export interface DomainRow {
   domain: string; service: string; state: string; reason: string | null; term: number; amount_cents: number; currency: string;

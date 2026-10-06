@@ -1,9 +1,5 @@
-// Renew from anywhere. A domain in CDR's own Tucows account is renewed there (Tucows answers GET
-// DOMAIN for those alone, with the expiry the renewal starts from). A domain held at another
-// company is renewed by moving it here: a transfer, paid first, the code following by email.
-//
-// Before payment a transfer is checked against the registry's public record (RDAP), refusing only
-// what the owner cannot fix. A registrar lock is NOT refused: the owner removes it when getting the code.
+// Renew from anywhere: domains in our Tucows account renew in place, others are transferred in.
+// Transfers are checked against RDAP before payment. A registrar lock is fine; the owner removes it.
 
 import { isSellable, tldOf, type RdapRecord } from "@cdr/shared";
 import { domainExpiry } from "../../integrations/opensrs/client";
@@ -34,7 +30,7 @@ export function transferBlock(r: Pick<RdapRecord, "statuses" | "created_at" | "t
 
 export type Renewal =
   | { status: "renewable"; expires_at: string; max_term: number }
-  | { status: "transferable"; expires_at: string | null; max_term: number }
+  | { status: "transferable"; expires_at: string | null; max_term: number; registrar: string | null }
   | { status: "not_transferable"; reason: string }
   | { status: "not_registered" }
   | { status: "error" };
@@ -49,9 +45,9 @@ export async function checkRenewal(domain: string): Promise<Renewal> {
   if (rdap.status !== "registered") return { status: "error" };
   const why = transferBlock(rdap.record);
   if (why) return { status: "not_transferable", reason: why };
-  // A move adds a year to the current expiry, like a renewal, so the same ten-year limit applies.
+  // A transfer adds a year, so the same 10-year cap applies.
   const expires = rdap.record.expires_at;
   const max = expires ? maxRenewTerm(expires) : 10;
   if (max < 1) return { status: "not_transferable", reason: "This domain is already registered as far ahead as the registry allows." };
-  return { status: "transferable", expires_at: expires, max_term: max };
+  return { status: "transferable", expires_at: expires, max_term: max, registrar: rdap.record.registrar };
 }

@@ -175,10 +175,7 @@ const byTier = (tier: Tier): string[] => EXTENSIONS.filter((e) => e.tier === tie
 export const POPULAR_TLDS: string[] = byTier("popular");
 export const NEW_TLDS: string[] = byTier("new");
 
-/**
- * What a cart line is FOR. The shop sells registrations and, since Oct 2026, renewals of domains in
- * CDR's own Tucows account (/renew/). Transfers are still arranged by email; their label stays.
- */
+/** Cart line labels. "transfer" is a renewal of a domain held elsewhere, by moving it here. */
 export const SERVICE_LABELS: Record<Service, string> = {
   register: "Domain Registration",
   renew: "Domain Renewal",

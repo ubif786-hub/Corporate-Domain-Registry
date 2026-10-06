@@ -6,6 +6,7 @@ import catalogJson from "../catalog.json";
 import type { RdapRecord } from "./rdap";
 
 export * from "./rdap";
+export * from "./transfer-guides";
 
 export interface Catalog {
   chargeCurrency: string;
@@ -96,8 +97,7 @@ export const CA_LEGAL_TYPES: { code: string; label: string; org: boolean }[] = [
 
 /* ---------- the API contract ---------- */
 
-/** What a cart line buys. A renewal is for a domain already in CDR's Tucows account; a transfer
- *  moves a domain held elsewhere into it, the code following after payment. */
+/** renew: a domain in our Tucows account. transfer: one held elsewhere, moved in. */
 export type LineService = "register" | "renew" | "transfer";
 
 /** GET /api/renew-check/?domain= */
@@ -116,6 +116,8 @@ export interface RenewCheckResponse {
   prices?: Record<string, number>;
   /** Only when not_transferable. */
   reason?: string;
+  /** When transferable: the current registrar. */
+  registrar?: string;
 }
 
 /** GET /api/whois/?domain= (the registry's RDAP record merged with the registrar's) */
@@ -190,8 +192,7 @@ export type OrderStatus =
   | "registered" | "partially_registered" | "failed"
   | "expired" | "payment_failed" | "amount_mismatch" | "settle_error" | "needs_review" | "stripe_error";
 
-/** A transfer starts as awaiting_code (paid, waiting for the customer's code); "registered" on it
- *  means transferred. */
+/** Transfers start as awaiting_code. "registered" also means renewed or transferred. */
 export type LineState = "awaiting_code" | "new" | "registering" | "registered" | "pending" | "failed" | "unknown";
 
 export interface OrderStatusResponse {
@@ -215,7 +216,7 @@ export interface GeoResponse {
   host: string | null;
 }
 
-/** GET /api/transfer-code/?order=&line=&t= (the personal link in the transfer email) */
+/** GET /api/transfer-code/ */
 export interface TransferCodeResponse {
   domain: string;
   /** awaiting_code: send the code; received: a code is being used; transferred; closed: refunded or cancelled */
@@ -224,4 +225,8 @@ export interface TransferCodeResponse {
   last_error?: string;
   /** When an unused transfer is refunded (ISO). */
   refund_after?: string;
+  /** Registrar at checkout. */
+  registrar?: string;
+  /** Codes that can still be tried, while awaiting_code. */
+  attempts_left?: number;
 }

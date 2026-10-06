@@ -46,7 +46,7 @@ export function orderToken(id: string): string {
   return createHmac("sha256", orderSecret()).update(id).digest("hex").slice(0, 32);
 }
 
-/** The token in a transfer's personal code link: one per line, so it opens that domain only. */
+/** Token for a transfer's code link, one per line. */
 export function transferToken(id: string, position: number): string {
   return createHmac("sha256", orderSecret()).update(`transfer|${id}|${position}`).digest("hex").slice(0, 32);
 }

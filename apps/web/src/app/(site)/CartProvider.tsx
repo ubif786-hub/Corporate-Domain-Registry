@@ -37,13 +37,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
-      // Registrations and renewals: a transfer line a browser saved earlier is dropped rather than
-      // refused later at checkout.
+      // Anything else a browser saved earlier is dropped rather than refused later at checkout.
       if (raw) {
         const saved: unknown = JSON.parse(raw);
         // localStorage is only readable after hydration; one extra render is the cost.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (Array.isArray(saved)) setItems(saved.filter((i: CartItem) => i && (i.service === "register" || i.service === "renew") && typeof i.domain === "string"));
+        if (Array.isArray(saved)) setItems(saved.filter((i: CartItem) => i && (i.service === "register" || i.service === "renew" || i.service === "transfer") && typeof i.domain === "string"));
       }
     } catch {
       /* a private window or a blocked store: start empty */

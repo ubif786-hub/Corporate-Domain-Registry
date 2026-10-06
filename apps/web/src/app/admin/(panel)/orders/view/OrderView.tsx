@@ -43,6 +43,7 @@ function Money({ o }: { o: Order }) {
         <dt>Card hold</dt><dd className="tnum">{s.amount_authorized !== undefined ? `${money(s.amount_authorized, o.currency)}${s.authorized_at ? `, ${when(s.authorized_at)}` : ""}` : "None"}</dd>
         <dt>Charged</dt><dd className="tnum strong">{s.amount_captured !== undefined ? money(s.amount_captured, o.currency) : "Nothing yet"}</dd>
         {released !== null && released > 0 ? (<><dt>Released to the customer</dt><dd className="tnum">{money(released, o.currency)}</dd></>) : null}
+        {s.amount_refunded ? (<><dt>Refunded</dt><dd className="tnum">&minus;{money(s.amount_refunded, o.currency)}</dd></>) : null}
         {s.settled_at ? (<><dt>Settled</dt><dd>{when(s.settled_at)}</dd></>) : null}
         {s.settle_error ? (<><dt>Stripe said</dt><dd>{s.settle_error}</dd></>) : null}
       </dl>
@@ -94,7 +95,22 @@ function Details({ o }: { o: Order }) {
   );
 }
 
-function Domains({ o }: { o: Order }) {
+/** A transfer's progress under its badge: whose code we wait for, and until when. */
+function TransferNotes({ o, l, codeDays }: { o: Order; l: Order["lines"][number]; codeDays?: number }) {
+  const t = l.transfer ?? {};
+  const paid = o.stripe.authorized_at ? Date.parse(o.stripe.authorized_at) : NaN;
+  const refundOn = codeDays && !Number.isNaN(paid) ? new Date(paid + codeDays * 86_400_000).toISOString() : null;
+  return (
+    <>
+      {l.state === "awaiting_code" && t.asked_at ? <span className="adm-cell-sub">Code asked for {day(t.asked_at)}{t.reminded ? `, ${t.reminded} ${t.reminded === 1 ? "reminder" : "reminders"} sent` : ""}</span> : null}
+      {l.state === "awaiting_code" && t.last_error ? <span className="adm-cell-sub">Last code: {t.last_error}</span> : null}
+      {l.state === "awaiting_code" && refundOn ? <span className="adm-cell-sub">Refunded on {day(refundOn)} if no working code</span> : null}
+      {t.refunded_cents ? <span className="adm-cell-sub">Refunded {money(t.refunded_cents, o.currency)}</span> : null}
+    </>
+  );
+}
+
+function Domains({ o, codeDays }: { o: Order; codeDays?: number }) {
   return (
     <div className="adm-table-wrap">
       <table className="adm-table">
@@ -114,6 +130,7 @@ function Domains({ o }: { o: Order }) {
               <td className="dom">
                 <span className="mono">{l.domain}</span>
                 {l.service === "renew" ? <span className="adm-cell-sub">Renewal</span> : null}
+                {l.service === "transfer" ? <span className="adm-cell-sub">Transfer from {l.transfer?.from_registrar ?? "another company"}</span> : null}
               </td>
               <td className="nowrap">{years(l.term)}</td>
               <td className="num">{money(l.amount_cents, o.currency)}</td>
@@ -123,6 +140,7 @@ function Domains({ o }: { o: Order }) {
                 {l.registered_at ? <span className="adm-cell-sub">{when(l.registered_at)}</span> : null}
                 {l.state === "registered" && l.expires_at ? <span className="adm-cell-sub">Expires {day(l.expires_at)}</span> : null}
                 {l.opensrs?.text && l.state !== "registered" ? <span className="adm-cell-sub">Tucows: {l.opensrs.code} {l.opensrs.text}</span> : null}
+                {l.service === "transfer" ? <TransferNotes o={o} l={l} codeDays={codeDays} /> : null}
               </td>
               <td className="mono nowrap">{l.opensrs?.order_id ?? ""}</td>
             </tr>
@@ -146,7 +164,7 @@ export function OrderView() {
     setResult(null);
     try {
       const r = await api<OrderDetail & { outcome: string | null }>(`/orders/${id}/continue`, { method: "POST" });
-      replace({ order: r.order, can_continue: r.can_continue });
+      replace({ order: r.order, can_continue: r.can_continue, code_days: r.code_days });
       if (r.outcome === "busy") setResult({ tone: "warning", text: "Another step is already running for this order. Wait a minute, then reload." });
       else setResult({ tone: "success", text: `Done. The order is now: ${statusWording(r.order.status).label}.` });
     } catch (e) {
@@ -224,7 +242,7 @@ export function OrderView() {
       {o ? (
         <div className="adm-split">
           <div className="adm-stack">
-            <Panel title={o.lines.length === 1 ? "Domain" : `Domains (${o.lines.length})`} id="domains"><Domains o={o} /></Panel>
+            <Panel title={o.lines.length === 1 ? "Domain" : `Domains (${o.lines.length})`} id="domains"><Domains o={o} codeDays={data?.code_days} /></Panel>
             <Panel title="Money" id="money"><Money o={o} /></Panel>
             <Panel title="History" id="history"><History log={o.log ?? []} /></Panel>
           </div>

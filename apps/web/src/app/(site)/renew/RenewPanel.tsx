@@ -20,11 +20,8 @@ import { formatDate } from "@/data/lookup";
 import { CONTACT, SERVICE_LABELS, TERMS, money, priceForTerm, type Term } from "@/data/site";
 import { SHOP_OPEN } from "@/data/shop";
 
-/* The renewal page, for any domain (GET /api/renew-check/). One with CDR is renewed in place; one
-   held at another company is renewed by moving it here, which the page says plainly: paid now, the
-   transfer code from the current company asked for by email after, refunded if it never moves.
-   Both go in the cart as a renewal; checkout decides which it is and asks again before the card is
-   touched. Not in the menu: the client sends the link in letters and to past buyers. */
+/* Renewal page for any domain. Ours renew in place; others are transferred in, and the page says
+   so. Starts at 5 years (the letter offer). Not in the menu: the client sends /renew/?domain= links. */
 
 const columnStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--flow-group)" };
 const resultStyle: CSSProperties = {
@@ -150,11 +147,12 @@ function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boole
   const cart = useCart();
   const { region } = useRegion();
   const max = check.max_term ?? 0;
-  const [term, setTerm] = useState<Term>(1);
+  const [term, setTerm] = useState<Term>(Math.max(1, Math.min(5, max)) as Term);
   const domain = check.domain;
-  const inCart = cart.items.some((i) => i.id === `renew:${domain}`);
-  const expires = check.expires_at ?? null;
   const elsewhere = check.status === "transferable";
+  const service = elsewhere ? "transfer" : "renew";
+  const inCart = cart.items.some((i) => i.id === `${service}:${domain}`);
+  const expires = check.expires_at ?? null;
 
   if (max < 1) {
     return <p style={bodyStyle}>This domain runs until {formatDate(expires)}, already as far ahead as the registry allows. There is nothing to renew yet.</p>;
@@ -163,7 +161,7 @@ function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boole
     <>
       {elsewhere ? (
         <p style={bodyStyle}>
-          This domain is registered with another company{expires ? <> and runs until {formatDate(expires)}</> : null}.
+          This domain is registered with {check.registrar ?? "another company"}{expires ? <> and runs until {formatDate(expires)}</> : null}.
           Renewing it here moves it to Corporate Domain Registry: you pay now, then we email you simple steps to get a
           transfer code from your current company. Your website and email keep working, and the years you pay for are
           added on top of the current expiry. If the move does not happen, you get a full refund.
@@ -176,7 +174,7 @@ function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boole
         </p>
       )}
       <div style={offerRowStyle}>
-        <span style={offerLabelStyle}>{SERVICE_LABELS.renew}</span>
+        <span style={offerLabelStyle}>{SERVICE_LABELS[service]}</span>
         <div style={offerActionsStyle}>
           <Select
             id={`renew-term-${domain.replace(/[^a-z0-9-]/gi, "-")}`}
@@ -192,7 +190,7 @@ function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boole
           {inCart ? (
             <Badge tone="success" emphasis="solid" icon textCase="title">Added To Cart</Badge>
           ) : (
-            <Button variant="primary" onClick={() => cart.add({ domain, service: "renew", term, amount: priceForTerm(term), maxTerm: max })}>
+            <Button variant="primary" onClick={() => cart.add({ domain, service, term, amount: priceForTerm(term), maxTerm: max })}>
               Add To Cart
             </Button>
           )}

@@ -52,6 +52,6 @@ orderStatusRouter.all("/api/order-status", allow("GET"), async (req, res) => {
     email: order.registrant.email,
   };
   sendJson(res, 200, out);
-  // A transferring order waits days for the customer's code: the sweep and the code link drive it.
+  // Transfers wait days for a code; the sweep and the code link drive them.
   if (DRIVABLE.includes(order.status) && order.status !== "transferring") afterReply("fulfil " + id, () => fulfil(id, 20));
 });

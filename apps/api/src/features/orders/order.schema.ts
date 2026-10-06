@@ -102,8 +102,7 @@ export const orderLines = pgTable("order_lines", {
   check("order_lines_service_valid", sql`${t.service} in (${oneOf(LINE_SERVICES)})`),
 ]);
 
-/** A transfer's code from the customer, apart from the order so no order view can show it.
- *  Deleted once Tucows has taken it or the line is closed. */
+/** Transfer codes, kept off the order so no admin view shows them. Deleted after use. */
 export const transferCodes = pgTable("transfer_codes", {
   orderId: text("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
   position: smallint("position").notNull(),

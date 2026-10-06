@@ -181,12 +181,8 @@ export async function register(domain: string, period: number, registrant: Check
   return { ...r, regUsername: String(attrs.reg_username) };
 }
 
-/**
- * SW_REGISTER reg_type=transfer: moves a domain held elsewhere into this account, with the code
- * from its current registrar (research/opensrs/sw_register-domain-or-trust_service-.md). A
- * transfer is always one year; extra years are a RENEW once it completes. The domain keeps its
- * nameservers, so the customer's website and email keep working. Never retried here, like register().
- */
+/** Transfers a domain in with its auth code. Always 1 year (extra years are renewed after) and
+ *  keeps the current nameservers. Never retried here. */
 export async function transfer(domain: string, authCode: string, registrant: CheckoutRegistrant, registrantIp: string): Promise<OpsResult> {
   const contact = opsContact(registrant);
   const attrs: Record<string, OpsValue> = {
@@ -206,7 +202,7 @@ export async function transfer(domain: string, authCode: string, registrant: Che
     link_domains: 0,
     contact_set: { owner: contact, admin: contact, billing: contact },
   };
-  // The .ca keeps the legal type it already has at CIRA (changing it needs change_contact).
+  // A .ca keeps its CIRA legal type.
   const extra: Record<string, OpsValue> = {};
   if (registrantIp && isIP(registrantIp)) extra.registrant_ip = registrantIp;
   return call("SW_REGISTER", attrs, "DOMAIN", 60, extra);
@@ -214,9 +210,7 @@ export async function transfer(domain: string, authCode: string, registrant: Che
 
 export type TransferState = "pending_owner" | "pending_admin" | "pending_registry" | "completed" | "cancelled" | "undef";
 
-/** The latest transfer this account started for the domain (CHECK_TRANSFER with check_status=1,
- *  research/opensrs/check_transfer.md), with when it last changed, or null when Tucows could not be
- *  asked. Asking also makes Tucows finish a transfer the registry has approved within minutes. */
+/** Latest transfer state for the domain (check_transfer), or null if Tucows didn't answer. */
 export async function transferStatus(domain: string): Promise<{ state: TransferState; at: number | null; reason: string } | null> {
   const r = await call("CHECK_TRANSFER", { domain, check_status: 1 }, "DOMAIN", 20);
   if (!r.transport || r.code !== 200) return null;

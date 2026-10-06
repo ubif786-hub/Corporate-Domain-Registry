@@ -8,8 +8,7 @@
 //
 // EVERY DOMAIN IS CHECKED AGAIN, straight at the registry (no cache), before Stripe is asked. A name
 // that went while it sat in the cart is refused here, before any card is touched. "renew" and
-// "transfer" both mean renew from anywhere: a domain in CDR's Tucows account becomes a renewal, one
-// held elsewhere a transfer (checked against the registry's record), and its expiry is kept.
+// "transfer" items become a renewal if the domain is ours, a transfer otherwise.
 
 import express, { Router } from "express";
 import { currencyForCountry, type CheckoutResponse } from "@cdr/shared";
@@ -65,6 +64,7 @@ checkoutRouter.all(
         } else {
           asService(line, r.status === "renewable" ? "renew" : "transfer");
           if (r.expires_at) line.expires_at = r.expires_at;
+          if (r.status === "transferable" && r.registrar) line.transfer = { from_registrar: r.registrar };
         }
         continue;
       }

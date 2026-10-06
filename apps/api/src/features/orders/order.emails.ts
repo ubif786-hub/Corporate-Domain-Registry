@@ -1,12 +1,13 @@
 // The emails an order sends: one to the customer and one to CDR when it settles, and CDR's
-// "CHECK order" notices when something needs a human.
+// "CHECK order" notices when something needs a human. Transfer orders email the customer from
+// transfer.emails.ts instead.
 
 import { config } from "../../core/config";
 import { sendMail } from "../../core/mail";
 import { money } from "../../core/money";
 import { isoNow } from "../../core/time";
 import { updateOrder } from "./order.store";
-import type { FailReason, Order } from "./order.types";
+import type { FailReason, Order, OrderLine } from "./order.types";
 
 export function subjectPrefix(o: Order): string {
   return o.test_mode ? "[TEST] " : "";
@@ -39,14 +40,17 @@ export function orderSummary(o: Order): string {
   out.push("Status: " + o.status);
   out.push("Order total: " + money(o.subtotal_cents, o.currency)
     + (s.amount_authorized !== undefined ? ", card authorised for " + money(s.amount_authorized, o.currency) : "")
-    + (s.amount_captured !== undefined ? ", captured " + money(s.amount_captured, o.currency) : ""));
+    + (s.amount_captured !== undefined ? ", captured " + money(s.amount_captured, o.currency) : "")
+    + (s.amount_refunded ? ", refunded " + money(s.amount_refunded, o.currency) : ""));
   out.push("Stripe payment: " + (s.payment_intent ?? "n/a"));
   out.push("");
   for (const l of o.lines) {
     const tid = l.opensrs?.order_id ? ", Tucows order " + l.opensrs.order_id : "";
-    const state = l.service === "renew" && l.state === "registered" ? "RENEWED" : l.state.toUpperCase();
+    const state = l.state === "registered" && l.service !== "register" ? (l.service === "renew" ? "RENEWED" : "MOVED") : l.state.toUpperCase();
     const until = l.state === "registered" && l.expires_at ? `, expires ${l.expires_at.slice(0, 10)}` : "";
-    out.push(`- ${l.domain}, ${l.service === "renew" ? "renewal " : ""}${termWords(l.term)}, ${money(l.amount_cents, o.currency)}: ${state}${l.reason ? ` (${l.reason})` : ""}${tid}${until}`);
+    const kind = l.service === "register" ? "" : l.service === "renew" ? "renewal " : "transfer ";
+    const from = l.transfer?.from_registrar ? `, from ${l.transfer.from_registrar}` : "";
+    out.push(`- ${l.domain}, ${kind}${termWords(l.term)}, ${money(l.amount_cents, o.currency)}: ${state}${l.reason ? ` (${l.reason})` : ""}${tid}${from}${until}`);
   }
   out.push("");
   out.push("Registrant:");
@@ -66,21 +70,14 @@ export async function notifyCheck(o: Order, subject: string, why: string): Promi
   await sendMail(config().notifyEmail, subjectPrefix(o) + subject, why + "\n\n" + orderSummary(o));
 }
 
-/** The customer's and CDR's emails once an order settles. Sent once per order. */
-export async function sendFinalEmails(o: Order): Promise<void> {
-  if (o.notified_final) return;
-  const c = config();
-  const done = o.lines.filter((l) => l.state === "registered");
+/** What happened to these domains, for the customer. `more`: other domains are still to come. */
+export function resultLines(lines: OrderLine[], more = false): string[] {
+  const b: string[] = [];
+  const done = lines.filter((l) => l.state === "registered");
   const registered = done.filter((l) => l.service === "register");
   const renewed = done.filter((l) => l.service === "renew");
-  const failed = o.lines.filter((l) => l.state === "failed");
-  const waiting = o.lines.filter((l) => l.state !== "registered" && l.state !== "failed");
-  const captured = o.stripe.amount_captured ?? 0;
-
-  // To the customer, in plain words.
-  const b: string[] = [];
-  b.push(`Hi ${o.registrant.first_name},`, "");
-  if (done.length) b.push("Thank you for your order.");
+  const failed = lines.filter((l) => l.state === "failed");
+  const waiting = lines.filter((l) => l.state !== "registered" && l.state !== "failed");
   if (registered.length) {
     b.push(registered.length === 1 ? "This domain is now registered to you:" : "These domains are now registered to you:");
     for (const l of registered) b.push(`  ${l.domain} (${termWords(l.term)})`);
@@ -97,10 +94,27 @@ export async function sendFinalEmails(o: Order): Promise<void> {
     b.push("We will email you if anything changes.", "");
   }
   if (failed.length) {
-    b.push(done.length ? "We could not complete:" : "We are sorry, we could not complete your order:");
+    b.push(done.length || more ? "We could not complete:" : "We are sorry, we could not complete your order:");
     for (const l of failed) b.push(`  ${l.domain} (${reasonWords(l.reason)})`);
     b.push("You are not charged for " + (failed.length === 1 ? "it" : "these") + ".", "");
   }
+  return b;
+}
+
+/** The customer's and CDR's emails once an order settles. Sent once per order. */
+export async function sendFinalEmails(o: Order): Promise<void> {
+  if (o.notified_final) return;
+  const c = config();
+  const done = o.lines.filter((l) => l.state === "registered");
+  const registered = done.filter((l) => l.service === "register");
+  const captured = o.stripe.amount_captured ?? 0;
+  const transfers = o.lines.some((l) => l.service === "transfer");
+
+  // To the customer (transfer orders were told already).
+  const b: string[] = [];
+  b.push(`Hi ${o.registrant.first_name},`, "");
+  if (done.length) b.push("Thank you for your order.");
+  b.push(...resultLines(o.lines));
   b.push(captured > 0
     ? "Amount charged to your card: " + money(captured, o.currency) + "."
     : "Nothing was charged. The hold on your card has been released; depending on your bank it can take a few days to disappear from your statement.");
@@ -109,16 +123,17 @@ export async function sendFinalEmails(o: Order): Promise<void> {
   }
   b.push("", "Order number: " + o.id, `Questions? Reply to this email or write to ${c.notifyEmail}.`, "", "Corporate Domain Registry", c.siteUrl);
   const subject = done.length ? `Your domain order ${o.id} is complete` : `Your domain order ${o.id} could not be completed`;
-  await sendMail(o.registrant.email, subjectPrefix(o) + subject, b.join("\n") + "\n");
+  if (!transfers) await sendMail(o.registrant.email, subjectPrefix(o) + subject, b.join("\n") + "\n");
 
   // To CDR.
-  const what = o.status === "registered" ? "New order" : o.status === "failed" ? "FAILED order" : "CHECK order";
+  const what = transfers ? "Transfers done, order" : o.status === "registered" ? "New order" : o.status === "failed" ? "FAILED order" : "CHECK order";
+  const kept = captured - (o.stripe.amount_refunded ?? 0);
   let intro = "";
   for (const l of o.lines) {
     if (l.reason === "tucows_on_hold") intro += `Tucows put ${l.domain} on hold (usually not enough balance). Cancel that order in the Tucows panel so it does not register without payment, and top up the balance.\n`;
   }
   if (o.settled_early) intro += "The card hold was about to expire, so the order was charged while some names were still pending at Tucows. Check them in the Tucows panel.\n";
-  await sendMail(c.notifyEmail, `${subjectPrefix(o)}${what} ${o.id}, ${money(captured, o.currency)}`, (intro !== "" ? intro + "\n" : "") + orderSummary(o));
+  await sendMail(c.notifyEmail, `${subjectPrefix(o)}${what} ${o.id}, ${money(kept, o.currency)}`, (intro !== "" ? intro + "\n" : "") + orderSummary(o));
 
   await updateOrder(o.id, (x) => { x.notified_final = isoNow(); return x; });
 }

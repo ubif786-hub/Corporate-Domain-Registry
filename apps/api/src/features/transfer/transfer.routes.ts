@@ -1,11 +1,7 @@
-// The personal link in a transfer email: /transfer-code/?order=<id>&line=<n>&t=<token>.
-//
-//   GET  /api/transfer-code/?order=&line=&t=           what the code page shows
-//   POST /api/transfer-code/  {order, line, t, code}   the customer's code
-//
-// The token is per line (order.store.ts transferToken), so a link opens one domain of one order.
-// The code is kept in its own table, never in the order, and the transfer is sent right after the
-// reply (one driver per order, so a double submit sends it once).
+// The customer's code link (/transfer-code/?order=&line=&t=).
+//   GET  /api/transfer-code/?order=&line=&t=           status for the page
+//   POST /api/transfer-code/  {order, line, t, code}   submit the code
+// One token per line. The code goes in its own table, never on the order.
 
 import { timingSafeEqual } from "node:crypto";
 import express, { Router, type Request } from "express";
@@ -17,11 +13,11 @@ import { isoNow, toUnix } from "../../core/time";
 import { visitorIp } from "../../core/visitor";
 import { DRIVABLE, fulfil } from "../orders/fulfilment.service";
 import { isValidOrderId, note, readOrder, saveTransferCode, transferToken, updateOrder } from "../orders/order.store";
-import type { Order, OrderLine } from "../orders/order.types";
+import { MAX_ATTEMPTS, type Order, type OrderLine } from "../orders/order.types";
 
 const sameToken = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** The order and its transfer line the link points at, or a 404 that says nothing more. */
+// The order and transfer line for this link, or a plain 404.
 async function linked(q: Record<string, unknown>): Promise<{ order: Order; i: number; line: OrderLine }> {
   const id = typeof q.order === "string" ? q.order : "";
   const i = Number(q.line);
@@ -39,9 +35,12 @@ function view(order: Order, line: OrderLine): TransferCodeResponse {
     domain: line.domain,
     status: line.state === "awaiting_code" ? "awaiting_code" : line.state === "registered" ? "transferred" : line.state === "failed" ? "closed" : "received",
   };
-  if (line.state === "awaiting_code" && line.transfer?.last_error) out.last_error = line.transfer.last_error;
+  if (line.transfer?.from_registrar) out.registrar = line.transfer.from_registrar;
+  if (line.state !== "awaiting_code") return out;
+  if (line.transfer?.last_error) out.last_error = line.transfer.last_error;
+  out.attempts_left = Math.max(0, MAX_ATTEMPTS - line.attempts);
   const paid = toUnix(order.stripe.authorized_at ?? "");
-  if (line.state === "awaiting_code" && paid !== null) out.refund_after = isoNow(new Date((paid + config().transferCodeDays * 86_400) * 1000));
+  if (paid !== null) out.refund_after = isoNow(new Date((paid + config().transferCodeDays * 86_400) * 1000));
   return out;
 }
 
@@ -57,8 +56,7 @@ transferRouter.all("/api/transfer-code", allow("GET", "POST"), express.json({ li
 
   const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
   const { order, i, line } = await linked(body);
-  // Registry codes are printable ASCII without spaces (EPP authInfo), up to 32 characters at most
-  // registries; a little more is allowed.
+  // Auth codes are printable ASCII with no spaces, usually 32 characters at most.
   const code = typeof body.code === "string" ? body.code.trim() : "";
   if (!/^[\x21-\x7E]{4,64}$/.test(code)) throw new HttpError(422, "invalid", "Enter the transfer code exactly as your current company gave it.", { fields: { code: "Check the code." } });
   if (!DRIVABLE.includes(order.status)) throw new HttpError(409, "not_paid", "We have not received the payment for this order yet.");
