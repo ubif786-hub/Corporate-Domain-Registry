@@ -22,6 +22,20 @@ export function dayWords(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
+/** The GST/HST inside an amount charged or refunded: the same share as in the card hold. */
+export function taxIn(o: Order, amount: number): number {
+  const tax = o.stripe.amount_tax ?? 0;
+  const held = o.stripe.amount_authorized ?? 0;
+  return tax && held ? Math.round((amount * tax) / held) : 0;
+}
+
+/** For receipts: ", including $7.80 CAD GST/HST (GST/HST no. ...)", or nothing. */
+export function taxWords(o: Order, amount: number): string {
+  const t = taxIn(o, amount);
+  const no = config().gstHstNumber;
+  return t ? `, including ${money(t, o.currency)} GST/HST` + (no ? ` (GST/HST no. ${no})` : "") : "";
+}
+
 function reasonWords(reason: FailReason | undefined): string {
   switch (reason) {
     case "taken": return "someone else registered it first";
@@ -39,6 +53,7 @@ export function orderSummary(o: Order): string {
   out.push("Order: " + o.id + (o.test_mode ? ` (TEST: no real money, Tucows ${o.opensrs_env})` : ""));
   out.push("Status: " + o.status);
   out.push("Order total: " + money(o.subtotal_cents, o.currency)
+    + (s.amount_tax ? ", GST/HST " + money(s.amount_tax, o.currency) : "")
     + (s.amount_authorized !== undefined ? ", card authorised for " + money(s.amount_authorized, o.currency) : "")
     + (s.amount_captured !== undefined ? ", captured " + money(s.amount_captured, o.currency) : "")
     + (s.amount_refunded ? ", refunded " + money(s.amount_refunded, o.currency) : ""));
@@ -116,7 +131,7 @@ export async function sendFinalEmails(o: Order): Promise<void> {
   if (done.length) b.push("Thank you for your order.");
   b.push(...resultLines(o.lines));
   b.push(captured > 0
-    ? "Amount charged to your card: " + money(captured, o.currency) + "."
+    ? "Amount charged to your card: " + money(captured, o.currency) + taxWords(o, captured) + "."
     : "Nothing was charged. The hold on your card has been released; depending on your bank it can take a few days to disappear from your statement.");
   if (registered.length) {
     b.push("", "Our registry partner, Tucows (OpenSRS), may send you an email asking you to confirm your contact details. Please answer it within 15 days, or the domain can be suspended.");
@@ -131,6 +146,10 @@ export async function sendFinalEmails(o: Order): Promise<void> {
   let intro = "";
   for (const l of o.lines) {
     if (l.reason === "tucows_on_hold") intro += `Tucows put ${l.domain} on hold (usually not enough balance). Cancel that order in the Tucows panel so it does not register without payment, and top up the balance.\n`;
+  }
+  const tax = o.stripe.amount_tax ?? 0;
+  if (tax && captured < (o.stripe.amount_authorized ?? 0)) {
+    intro += `Stripe's tax report counts the GST/HST of the whole card hold (${money(tax, o.currency)}), but only ${money(taxIn(o, captured), o.currency)} was charged: Stripe does not adjust it for the part released. Use the lower figure when filing.\n`;
   }
   if (o.settled_early) intro += "The card hold was about to expire, so the order was charged while some names were still pending at Tucows. Check them in the Tucows panel.\n";
   await sendMail(c.notifyEmail, `${subjectPrefix(o)}${what} ${o.id}, ${money(kept, o.currency)}`, (intro !== "" ? intro + "\n" : "") + orderSummary(o));

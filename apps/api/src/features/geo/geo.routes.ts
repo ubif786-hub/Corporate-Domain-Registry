@@ -1,7 +1,7 @@
 // GET /api/geo/ — where the visitor appears to be, for the header chip and its location panel.
 //
-// FIVE FIELDS: country (ISO two-letter, which picks the region, the logo and the currency), city,
-// region, ip, host. Anything that cannot be resolved is null, and the page treats null as "unknown"
+// country (ISO two-letter, which picks the region, the logo and the currency), city,
+// region, ip, host, and tax (GST/HST is added at payment). Anything that cannot be resolved is null, and the page treats null as "unknown"
 // and falls back to the default region. NOTHING HERE FAILS AT THE VISITOR: a missing database or a
 // private address answers 200 with nulls.
 //
@@ -38,8 +38,9 @@ export const geoRouter = Router();
 geoRouter.all("/api/geo", allow("GET"), async (req, res) => {
   const ip = visitorIp(req);
   const host = req.get("host");
-  const out: GeoResponse = { country: null, city: null, region: null, ip, host: host ? host.replace(/[^A-Za-z0-9.:\-[\]]/g, "") : null };
-  const rec = await lookupIp(tryConfig()?.geoipDb ?? "/srv/cdr/geo/dbip-city-lite.mmdb", ip);
+  const c = tryConfig();
+  const out: GeoResponse = { country: null, city: null, region: null, ip, host: host ? host.replace(/[^A-Za-z0-9.:\-[\]]/g, "") : null, tax: !!c?.gstHstNumber };
+  const rec = await lookupIp(c?.geoipDb ?? "/srv/cdr/geo/dbip-city-lite.mmdb", ip);
   if (rec) {
     if (rec.country?.iso_code) out.country = rec.country.iso_code.toUpperCase();
     // The database appends a district in brackets ("Toronto (Old Toronto)"); the panel shows a city.

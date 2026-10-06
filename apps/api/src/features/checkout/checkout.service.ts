@@ -70,6 +70,8 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
     // 30 minutes; a little more so a clock a few minutes out cannot fall under it.
     expires_at: unixNow() + 40 * 60,
     allow_promotion_codes: "true",
+    // GST/HST on top, from the billing address Stripe asks for. Only where the account is registered.
+    automatic_tax: c.gstHstNumber ? { enabled: "true" } : undefined,
     metadata: { order_id: id },
     payment_intent_data: {
       capture_method: "manual",
@@ -81,6 +83,7 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
       price_data: {
         currency,
         unit_amount: l.amount_cents,
+        tax_behavior: c.gstHstNumber ? "exclusive" : undefined,
         product_data: { name: `${l.domain}, ${l.service === "renew" ? "renewal" : l.service === "transfer" ? "renewal by transfer to Corporate Domain Registry" : "registration"} for ${l.term} ${l.term === 1 ? "year" : "years"}` },
       },
     })),

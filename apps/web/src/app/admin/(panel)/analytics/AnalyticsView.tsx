@@ -34,13 +34,19 @@ function Figures({ r }: { r: SalesReport }) {
       </div>
       <div className="adm-figure">
         <span className="adm-figure-label">Renewed</span>
-        <span className="adm-figure-value">{r.period.renewed.toLocaleString("en-US")}</span>
-        <span className="adm-figure-note">{r.all.renewed.toLocaleString("en-US")} since the shop opened</span>
+        <span className="adm-figure-value">{(r.period.renewed + r.period.moved).toLocaleString("en-US")}</span>
+        <span className="adm-figure-note">
+          {r.period.moved ? `${r.period.moved.toLocaleString("en-US")} moved from other companies. ` : null}
+          {(r.all.renewed + r.all.moved).toLocaleString("en-US")} since the shop opened
+        </span>
       </div>
       <div className="adm-figure">
         <span className="adm-figure-label">Money taken</span>
         <span className="adm-figure-value">{money(r.period.usd, "usd").replace(" USD", "")}<span className="quiet"> USD</span></span>
-        <span className="adm-figure-note">{r.period.cad ? `Plus ${money(r.period.cad, "cad")}` : "No sales in CAD"}</span>
+        <span className="adm-figure-note">
+          {r.period.cad ? `Plus ${money(r.period.cad, "cad")}` : "No sales in CAD"}
+          {r.period.tax_usd || r.period.tax_cad ? `. GST/HST included: ${[r.period.tax_usd ? money(r.period.tax_usd, "usd") : "", r.period.tax_cad ? money(r.period.tax_cad, "cad") : ""].filter(Boolean).join(", ")}` : null}
+        </span>
       </div>
     </div>
   );

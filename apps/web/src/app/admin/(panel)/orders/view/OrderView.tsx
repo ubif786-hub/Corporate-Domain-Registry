@@ -40,6 +40,7 @@ function Money({ o }: { o: Order }) {
       <dl className="adm-dl">
         <dt>Order total</dt><dd className="tnum">{money(o.subtotal_cents, o.currency)}</dd>
         {s.amount_discount ? (<><dt>Promotion</dt><dd className="tnum">&minus;{money(s.amount_discount, o.currency)}</dd></>) : null}
+        {s.amount_tax ? (<><dt>GST/HST</dt><dd className="tnum">{money(s.amount_tax, o.currency)}{s.amount_captured !== undefined && s.amount_authorized && s.amount_captured < s.amount_authorized ? `, ${money(Math.round((s.amount_captured * s.amount_tax) / s.amount_authorized), o.currency)} of it charged` : ""}</dd></>) : null}
         <dt>Card hold</dt><dd className="tnum">{s.amount_authorized !== undefined ? `${money(s.amount_authorized, o.currency)}${s.authorized_at ? `, ${when(s.authorized_at)}` : ""}` : "None"}</dd>
         <dt>Charged</dt><dd className="tnum strong">{s.amount_captured !== undefined ? money(s.amount_captured, o.currency) : "Nothing yet"}</dd>
         {released !== null && released > 0 ? (<><dt>Released to the customer</dt><dd className="tnum">{money(released, o.currency)}</dd></>) : null}

@@ -98,6 +98,8 @@ type Row = Record<string, unknown>;
 const num = (v: unknown) => Number(v ?? 0);
 const isoOf = (v: unknown) => (v instanceof Date ? v : new Date(String(v))).toISOString();
 const amounts = (usd: number, cad: number) => [usd || !cad ? money(usd, "usd") : "", cad ? money(cad, "cad") : ""].filter(Boolean).join(", ");
+const DONE: Record<string, string> = { renew: "renewed", transfer: "moved to us" };
+const taxNote =(usd: number, cad: number) => (usd || cad ? ` (GST/HST included: ${amounts(usd, cad)})` : "");
 
 /** The sales figures for a period: the report email and the admin dashboard's Sales report. Money
  *  is what Stripe captured, in cents, per currency (USD and CAD are never added together). */
@@ -106,8 +108,9 @@ export interface SalesReport {
   to: string;
   /** Orders in this payment mode only: test orders while Stripe is in test. */
   test_mode: boolean;
-  period: { orders: number; registered: number; renewed: number; failed: number; usd: number; cad: number };
-  all: { registered: number; renewed: number; usd: number; cad: number };
+  /** moved: transfers in. tax_*: the GST/HST inside usd and cad. */
+  period: { orders: number; registered: number; renewed: number; moved: number; failed: number; usd: number; cad: number; tax_usd: number; tax_cad: number };
+  all: { registered: number; renewed: number; moved: number; usd: number; cad: number; tax_usd: number; tax_cad: number };
   /** Paid orders in the period, oldest first. */
   buyers: {
     order_id: string; created_at: string; name: string; org: string; email: string; phone: string; country: string;
@@ -127,16 +130,21 @@ export async function reportData(c: Config, since: number, now: number): Promise
   const to = new Date(now);
   const inPeriod = sql`and o.created_at >= ${from} and o.created_at < ${to}`;
   const captured = sql`(coalesce((o.stripe->>'amount_captured')::bigint, 0) - coalesce((o.stripe->>'amount_refunded')::bigint, 0))`;
+  // Its GST/HST: the same share as in the card hold.
+  const tax = sql`coalesce(round(${captured}::numeric * (o.stripe->>'amount_tax')::bigint / nullif((o.stripe->>'amount_authorized')::bigint, 0)), 0)`;
 
   const totals = async (window: boolean) => ((await d.execute(sql`
     select count(*)::int as orders,
       coalesce(sum(${captured}) filter (where o.currency = 'usd'), 0)::bigint as usd,
-      coalesce(sum(${captured}) filter (where o.currency = 'cad'), 0)::bigint as cad
+      coalesce(sum(${captured}) filter (where o.currency = 'cad'), 0)::bigint as cad,
+      coalesce(sum(${tax}) filter (where o.currency = 'usd'), 0)::bigint as tax_usd,
+      coalesce(sum(${tax}) filter (where o.currency = 'cad'), 0)::bigint as tax_cad
     from orders o where ${paid} ${window ? inPeriod : sql``}`)).rows[0] ?? {}) as Row;
   const lines = async (window: boolean) => ((await d.execute(sql`
     select
       count(*) filter (where l.state = 'registered' and l.service = 'register')::int as registered,
       count(*) filter (where l.state = 'registered' and l.service = 'renew')::int as renewed,
+      count(*) filter (where l.state = 'registered' and l.service = 'transfer')::int as moved,
       count(*) filter (where l.state = 'failed')::int as failed
     from order_lines l join orders o on o.id = l.order_id
     where ${paid} ${window ? inPeriod : sql``}`)).rows[0] ?? {}) as Row;
@@ -170,10 +178,13 @@ export async function reportData(c: Config, since: number, now: number): Promise
     to: iso(now),
     test_mode: testMode,
     period: {
-      orders: num(period.orders), registered: num(periodLines.registered), renewed: num(periodLines.renewed),
-      failed: num(periodLines.failed), usd: num(period.usd), cad: num(period.cad),
+      orders: num(period.orders), registered: num(periodLines.registered), renewed: num(periodLines.renewed), moved: num(periodLines.moved),
+      failed: num(periodLines.failed), usd: num(period.usd), cad: num(period.cad), tax_usd: num(period.tax_usd), tax_cad: num(period.tax_cad),
     },
-    all: { registered: num(totalLines.registered), renewed: num(totalLines.renewed), usd: num(total.usd), cad: num(total.cad) },
+    all: {
+      registered: num(totalLines.registered), renewed: num(totalLines.renewed), moved: num(totalLines.moved),
+      usd: num(total.usd), cad: num(total.cad), tax_usd: num(total.tax_usd), tax_cad: num(total.tax_cad),
+    },
     buyers: buyers.map((r) => ({
       order_id: String(r.id), created_at: isoOf(r.created_at), name: String(r.name ?? ""), org: String(r.org ?? ""),
       email: String(r.email ?? ""), phone: String(r.phone ?? ""), country: String(r.country ?? ""),
@@ -198,15 +209,16 @@ export async function reportText(c: Config, since: number, now: number): Promise
   out.push(`Orders paid: ${r.period.orders}`);
   out.push(`New domains registered: ${r.period.registered}`);
   out.push(`Domains renewed: ${r.period.renewed}`);
+  out.push(`Domains moved to us from other companies: ${r.period.moved}`);
   out.push(`Not completed (the customer was not charged): ${r.period.failed}`);
-  out.push(`Money taken: ${amounts(r.period.usd, r.period.cad)}`, "");
+  out.push(`Money taken: ${amounts(r.period.usd, r.period.cad)}${taxNote(r.period.tax_usd, r.period.tax_cad)}`, "");
 
   out.push("BUYERS THIS PERIOD");
   if (!r.buyers.length) out.push("None.");
   for (const o of r.buyers) {
     out.push(`${dayWords(o.created_at)}, ${o.name}${o.org ? ` (${o.org})` : ""}, ${o.email}, ${o.country}`);
     for (const l of o.lines) {
-      const what = l.state === "registered" ? (l.service === "renew" ? "renewed" : "registered") : l.state === "failed" ? "not completed" : "in progress";
+      const what = l.state === "registered" ? (DONE[l.service] ?? "registered") : l.state === "failed" ? "not completed" : "in progress";
       out.push(`  ${l.domain}: ${what}, ${termWords(l.term)}`);
     }
   }
@@ -218,8 +230,8 @@ export async function reportText(c: Config, since: number, now: number): Promise
   out.push(`Customers renew on ${c.siteUrl}/renew/`, "");
 
   out.push("SINCE THE SHOP OPENED");
-  out.push(`Domains registered: ${r.all.registered}, renewed: ${r.all.renewed}`);
-  out.push(`Money taken: ${amounts(r.all.usd, r.all.cad)}`, "");
+  out.push(`Domains registered: ${r.all.registered}, renewed: ${r.all.renewed}, moved to us: ${r.all.moved}`);
+  out.push(`Money taken: ${amounts(r.all.usd, r.all.cad)}${taxNote(r.all.tax_usd, r.all.tax_cad)}`, "");
 
   out.push(`Tucows balance now: ${b === null ? "could not be read" : "$" + twoDecimals(b) + " USD"}`, "");
   out.push(`Every order, with contact details, is in the admin panel: ${c.siteUrl}/admin/ ("Download all (CSV)" on the Orders page).`);

@@ -26,6 +26,8 @@ export interface Config {
   reportDays: number;
   /** Days a paid transfer waits for the customer's code before it is refunded. */
   transferCodeDays: number;
+  /** Set once Stripe Tax is on: GST/HST is added at checkout and the number goes on receipts. */
+  gstHstNumber: string;
   fromEmail: string;
   /** resend: Resend's HTTPS API (DigitalOcean blocks mail ports); file: an outbox folder beside
    *  the orders, for local proof; log: one line per email to the process log, no body. */
@@ -79,6 +81,7 @@ function parse(raw: Record<string, string | undefined>): Config {
     lowBalanceUsd: Number.isFinite(lowBalance) && lowBalance >= 0 ? lowBalance : 50,
     reportDays: Number.isInteger(reportDays) && reportDays >= 0 ? reportDays : 7,
     transferCodeDays: Number.isInteger(transferDays) && transferDays >= 1 ? transferDays : 90,
+    gstHstNumber: clean(raw.GST_HST_NUMBER),
     fromEmail,
     mailTransport: transport === "resend" || transport === "log" ? transport : "file",
     resendApiKey: clean(raw.RESEND_API_KEY),

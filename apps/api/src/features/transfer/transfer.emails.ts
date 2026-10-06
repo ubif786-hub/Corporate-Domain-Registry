@@ -6,7 +6,7 @@ import { config } from "../../core/config";
 import { sendMail } from "../../core/mail";
 import { money } from "../../core/money";
 import { isoNow, toUnix, unixNow } from "../../core/time";
-import { dayWords, orderSummary, resultLines, subjectPrefix, termWords } from "../orders/order.emails";
+import { dayWords, orderSummary, resultLines, subjectPrefix, taxWords, termWords } from "../orders/order.emails";
 import { readOrder, transferToken, updateOrder } from "../orders/order.store";
 import { MAX_ATTEMPTS, type LineTransfer, type Order, type OrderLine } from "../orders/order.types";
 
@@ -105,7 +105,7 @@ export async function transferNotices(id: string): Promise<void> {
         `We could not move ${x.l.domain} to Corporate Domain Registry: ${failWords(x.l, c.transferCodeDays)}.`,
         "",
         t.refunded_cents
-          ? `We have refunded ${money(t.refunded_cents, o.currency)} to your card. Depending on your bank it can take 5 to 10 days to appear on your statement.`
+          ? `We have refunded ${money(t.refunded_cents, o.currency)} to your card${taxWords(o, t.refunded_cents)}. Depending on your bank it can take 5 to 10 days to appear on your statement.`
           : "You were not charged for it.",
         "",
         `${x.l.domain} stays with the company it is with now, and nothing changes there.`,
@@ -166,7 +166,7 @@ const names = (lines: At[]) => lines.length === 1 ? lines[0].l.domain : lines.le
 
 function charged(o: Order): string {
   const amount = o.stripe.amount_captured ?? 0;
-  return amount > 0 ? `We have charged ${money(amount, o.currency)} to your card.` : "";
+  return amount > 0 ? `We have charged ${money(amount, o.currency)} to your card${taxWords(o, amount)}.` : "";
 }
 
 function codeLink(o: Order, i: number): string {

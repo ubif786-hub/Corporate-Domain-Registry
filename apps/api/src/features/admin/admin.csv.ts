@@ -1,10 +1,11 @@
 // One row per domain, for a spreadsheet. Unpaid checkouts are left out.
 
 import { plainAmount } from "../../core/money";
+import { taxIn } from "../orders/order.emails";
 import type { Order } from "../orders/order.types";
 import type { SalesReport } from "../reports/reports.service";
 
-const HEADER = ["order", "created_utc", "order_status", "test", "domain", "type", "years", "domain_status", "expires_utc", "price", "currency", "order_total", "discount", "charged", "tucows_order", "first_name", "last_name", "organisation", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country", "ca_legal_type", "ordered_from_ip", "stripe_payment"];
+const HEADER = ["order", "created_utc", "order_status", "test", "domain", "type", "years", "domain_status", "expires_utc", "price", "currency", "order_total", "discount", "charged", "refunded", "gst_hst", "tucows_order", "first_name", "last_name", "organisation", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country", "ca_legal_type", "ordered_from_ip", "stripe_payment"];
 
 // A cell starting with = + - @ would run as a formula in a spreadsheet.
 const safe = (v: unknown) => {
@@ -16,6 +17,8 @@ const cell = (s: string) => (/[",\n\r\t ]/.test(s) ? `"${s.replace(/"/g, '""')}"
 
 const row = (values: unknown[]) => values.map((v) => cell(safe(v))).join(",") + "\n";
 
+const KIND: Record<string, string> = { register: "registration", renew: "renewal", transfer: "transfer" };
+
 export function ordersCsv(orders: Order[]): string {
   // The byte-order mark makes Excel read the file as UTF-8.
   let out = "﻿" + HEADER.map(cell).join(",") + "\n";
@@ -26,11 +29,13 @@ export function ordersCsv(orders: Order[]): string {
     for (const l of o.lines) {
       out += row([
         o.id, o.created_at, o.status, o.test_mode ? "yes" : "no",
-        l.domain, l.service === "renew" ? "renewal" : "registration", l.term, l.state, l.state === "registered" ? l.expires_at ?? "" : "",
+        l.domain, KIND[l.service] ?? "registration", l.term, l.state, l.state === "registered" ? l.expires_at ?? "" : "",
         plainAmount(l.amount_cents), o.currency.toUpperCase(),
         plainAmount(o.subtotal_cents),
         s.amount_discount !== undefined ? plainAmount(s.amount_discount) : "",
         s.amount_captured !== undefined ? plainAmount(s.amount_captured) : "",
+        s.amount_refunded ? plainAmount(s.amount_refunded) : "",
+        s.amount_tax ? plainAmount(taxIn(o, (s.amount_captured ?? 0) - (s.amount_refunded ?? 0))) : "",
         l.opensrs?.order_id ?? "",
         r.first_name, r.last_name, r.org_name, r.email, r.phone, r.address1, r.address2, r.city, r.state, r.postal_code, r.country, r.ca_legal_type ?? "",
         o.registrant_ip ?? "",
@@ -52,8 +57,8 @@ export function reportCsv(r: SalesReport, list: "buyers" | "renewals", siteUrl: 
   let out = "﻿" + ["ordered_utc", "order", "name", "organisation", "email", "phone", "country", "domain", "type", "result", "years", "expires_utc"].map(cell).join(",") + "\n";
   for (const b of r.buyers) {
     for (const l of b.lines) {
-      const result = l.state === "registered" ? (l.service === "renew" ? "renewed" : "registered") : l.state === "failed" ? "not completed" : "in progress";
-      out += row([b.created_at, b.order_id, b.name, b.org, b.email, b.phone, b.country, l.domain, l.service === "renew" ? "renewal" : "registration", result, l.term, l.state === "registered" ? l.expires_at ?? "" : ""]);
+      const result = l.state === "registered" ? (l.service === "renew" ? "renewed" : l.service === "transfer" ? "moved" : "registered") : l.state === "failed" ? "not completed" : "in progress";
+      out += row([b.created_at, b.order_id, b.name, b.org, b.email, b.phone, b.country, l.domain, KIND[l.service] ?? "registration", result, l.term, l.state === "registered" ? l.expires_at ?? "" : ""]);
     }
   }
   return out;

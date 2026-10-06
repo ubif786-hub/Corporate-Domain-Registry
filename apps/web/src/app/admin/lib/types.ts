@@ -64,7 +64,7 @@ export interface Order {
   visitor_country: string | null;
   agreement: { accepted_at: string; document: string; url: string };
   stripe: {
-    session_id?: string; payment_intent?: string; amount_subtotal?: number; amount_discount?: number;
+    session_id?: string; payment_intent?: string; amount_subtotal?: number; amount_discount?: number; amount_tax?: number;
     amount_authorized?: number; authorized_at?: string; amount_captured?: number; amount_refunded?: number; settled_at?: string; settle_error?: string;
     customer?: { email: string | null; name: string | null };
   };
@@ -95,8 +95,8 @@ export interface SalesReport {
   from: string;
   to: string;
   test_mode: boolean;
-  period: { orders: number; registered: number; renewed: number; failed: number; usd: number; cad: number };
-  all: { registered: number; renewed: number; usd: number; cad: number };
+  period: { orders: number; registered: number; renewed: number; moved: number; failed: number; usd: number; cad: number; tax_usd: number; tax_cad: number };
+  all: { registered: number; renewed: number; moved: number; usd: number; cad: number; tax_usd: number; tax_cad: number };
   buyers: {
     order_id: string; created_at: string; name: string; org: string; email: string; phone: string; country: string;
     lines: { domain: string; service: string; state: string; term: number; expires_at: string | null }[];

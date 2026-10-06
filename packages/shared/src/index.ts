@@ -214,6 +214,8 @@ export interface GeoResponse {
   region: string | null;
   ip: string | null;
   host: string | null;
+  /** The shop adds GST/HST at payment (Canadian customers). */
+  tax: boolean;
 }
 
 /** GET /api/transfer-code/ */

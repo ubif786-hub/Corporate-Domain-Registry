@@ -48,6 +48,8 @@ interface RegionValue {
    * says that in a sentence rather than rendering five rows of "unknown".
    */
   place: GeoPlace | null;
+  /** GST/HST is added on the payment page (the API's GST_HST_NUMBER is set). */
+  tax: boolean;
 }
 
 export interface GeoPlace {
@@ -64,6 +66,7 @@ export function RegionProvider({ children }: { children: ReactNode }) {
   const [code, setCode] = useState<RegionCode>(DEFAULT_REGION);
   const [ready, setReady] = useState(false);
   const [place, setPlace] = useState<GeoPlace | null>(null);
+  const [tax, setTax] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -85,6 +88,7 @@ export function RegionProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         if (!live) return;
         setCode(regionForCountry(data?.country));
+        setTax(data?.tax === true);
         if (data) {
           setPlace({
             city: data.city ?? null,
@@ -108,8 +112,8 @@ export function RegionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<RegionValue>(
-    () => ({ code, region: regionOf(code), ready, place }),
-    [code, ready, place],
+    () => ({ code, region: regionOf(code), ready, place, tax }),
+    [code, ready, place, tax],
   );
   return <RegionContext.Provider value={value}>{children}</RegionContext.Provider>;
 }

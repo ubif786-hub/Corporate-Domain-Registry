@@ -60,6 +60,8 @@ export interface OrderStripe {
   customer?: { email: string | null; name: string | null };
   amount_subtotal?: number;
   amount_discount?: number;
+  /** GST/HST Stripe added on top; part of amount_authorized. */
+  amount_tax?: number;
   payment_intent?: string;
   amount_authorized?: number;
   authorized_at?: string;

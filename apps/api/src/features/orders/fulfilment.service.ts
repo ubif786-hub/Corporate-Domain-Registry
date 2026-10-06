@@ -48,7 +48,7 @@ const SETTLE_AFTER_SECONDS = 6 * 86_400;
 
 /**
  * A finished Checkout Session, recorded on its order: the card must be AUTHORISED (PaymentIntent
- * "requires_capture") for the amount checkout computed, less any promotion code Stripe applied.
+ * "requires_capture") for the amount checkout computed, less any promotion code, plus any GST/HST.
  * Anything else is flagged, CDR is told, and a wrong hold is released.
  *
  * Called by the webhook (with the event id, so a redelivery is a no-op) and by order-status and
@@ -79,8 +79,10 @@ export async function recordCheckout(orderId: string, session: any, eventId: str
     o.stripe.customer = { email: session.customer_details?.email ?? null, name: session.customer_details?.name ?? null };
     const subtotal: number = Number.isInteger(session.amount_subtotal) ? session.amount_subtotal : -1;
     const discount: number = Number.isInteger(session.total_details?.amount_discount) ? session.total_details.amount_discount : 0;
+    const tax: number = Number.isInteger(session.total_details?.amount_tax) ? session.total_details.amount_tax : 0;
     o.stripe.amount_subtotal = subtotal;
     o.stripe.amount_discount = discount;
+    if (tax) o.stripe.amount_tax = tax;
     if (!pi) {
       o.status = "needs_review";
       notify = "no_payment";
@@ -89,7 +91,7 @@ export async function recordCheckout(orderId: string, session: any, eventId: str
     }
     o.stripe.payment_intent = pi.id;
     const currency = typeof pi.currency === "string" ? pi.currency : "";
-    const expected = subtotal - discount;
+    const expected = subtotal - discount + tax;
 
     if (pi.status !== "requires_capture") {
       o.status = pi.status === "succeeded" ? "needs_review" : "payment_failed";
@@ -108,7 +110,8 @@ export async function recordCheckout(orderId: string, session: any, eventId: str
     o.status = "authorized";
     o.stripe.authorized_at = isoNow();
     note(o, `Card authorised for ${money(expected, o.currency)}`
-      + (discount ? ` after a ${money(discount, o.currency)} promotion` : "") + ".");
+      + (discount ? ` after a ${money(discount, o.currency)} promotion` : "")
+      + (tax ? `, including ${money(tax, o.currency)} GST/HST` : "") + ".");
     return o;
   });
   if (!order) return null;
@@ -474,7 +477,7 @@ async function settle(id: string): Promise<OrderStatus | null> {
       || (forced && (l.state === "pending" || l.state === "registering" || l.state === "unknown"))) chargeable += l.amount_cents;
   }
   const authorized = order.stripe.amount_authorized ?? 0;
-  // A promotion code discounts the whole order; the capture keeps the same proportion.
+  // A promotion code discounts the whole order and GST/HST is on all of it: the capture keeps the same proportion.
   let capture = order.subtotal_cents > 0 ? Math.round((authorized * chargeable) / order.subtotal_cents) : 0;
   capture = Math.min(capture, authorized);
   const pi = encodeURIComponent(order.stripe.payment_intent ?? "");

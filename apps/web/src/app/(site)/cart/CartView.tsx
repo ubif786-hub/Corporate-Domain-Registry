@@ -108,7 +108,7 @@ export function CartView() {
   const cart = useCart();
   // Prices are held in USD and shown in the visitor's currency: CAD for Canada at the same
   // figures (the client's rule), USD for everyone else.
-  const { region } = useRegion();
+  const { region, tax } = useRegion();
   if (!cart.ready) return null;
 
   if (cart.items.length === 0) {
@@ -239,7 +239,10 @@ export function CartView() {
         </div>
       </div>
 
-      <p style={noteStyle}>Have a promo code? You can enter it on the secure payment page.</p>
+      <p style={noteStyle}>
+        {tax ? "Customers in Canada pay GST/HST on top, added on the secure payment page. " : null}
+        Have a promo code? You can enter it on the secure payment page.
+      </p>
     </div>
   );
 }

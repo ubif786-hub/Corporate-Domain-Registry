@@ -14,6 +14,7 @@ import { AGREEMENT } from "@/data/legal/agreement";
 import catalog from "@cdr/shared/catalog.json";
 import { CA_LEGAL_TYPES } from "@cdr/shared";
 import type { CartItem } from "../CartProvider";
+import { useRegion } from "../RegionProvider";
 
 /* The registrant form, then Stripe (PROJECT.md decision 12 D3). OpenSRS will not register a domain
  * without a named registrant, so these details are collected HERE, before payment, rather than
@@ -57,6 +58,7 @@ export function CheckoutForm({
   onRemove: (id: string) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const { tax } = useRegion();
   const [agree, setAgree] = useState(false);
   const [country, setCountry] = useState("");
   const [busy, setBusy] = useState(false);
@@ -261,8 +263,9 @@ export function CheckoutForm({
 
       <p style={noteStyle}>
         You pay on Stripe&rsquo;s secure page, in {currency}; this site never sees your card. Your card is
-        only charged once your domains are registered or renewed, and only for the ones that go through. Have a promo
-        code? Enter it on the payment page.
+        only charged once your domains are registered or renewed, and only for the ones that go through.
+        {tax ? " Customers in Canada pay GST/HST on top, added on the payment page." : null} Have a promo code? Enter it
+        on the payment page.
       </p>
     </form>
   );
