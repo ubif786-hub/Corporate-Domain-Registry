@@ -181,6 +181,51 @@ export async function register(domain: string, period: number, registrant: Check
   return { ...r, regUsername: String(attrs.reg_username) };
 }
 
+/**
+ * SW_REGISTER reg_type=transfer: moves a domain held elsewhere into this account, with the code
+ * from its current registrar (research/opensrs/sw_register-domain-or-trust_service-.md). A
+ * transfer is always one year; extra years are a RENEW once it completes. The domain keeps its
+ * nameservers, so the customer's website and email keep working. Never retried here, like register().
+ */
+export async function transfer(domain: string, authCode: string, registrant: CheckoutRegistrant, registrantIp: string): Promise<OpsResult> {
+  const contact = opsContact(registrant);
+  const attrs: Record<string, OpsValue> = {
+    domain,
+    reg_type: "transfer",
+    auth_info: authCode,
+    period: 1,
+    handle: "process",
+    reg_username: "cdr" + randomBytes(8).toString("hex").slice(0, 14),
+    reg_password: randomBytes(8).toString("hex"),
+    auto_renew: 0,
+    f_lock_domain: 1,
+    f_whois_privacy: 0,
+    custom_tech_contact: 0,
+    custom_nameservers: 0,
+    custom_transfer_nameservers: 0,
+    link_domains: 0,
+    contact_set: { owner: contact, admin: contact, billing: contact },
+  };
+  // The .ca keeps the legal type it already has at CIRA (changing it needs change_contact).
+  const extra: Record<string, OpsValue> = {};
+  if (registrantIp && isIP(registrantIp)) extra.registrant_ip = registrantIp;
+  return call("SW_REGISTER", attrs, "DOMAIN", 60, extra);
+}
+
+export type TransferState = "pending_owner" | "pending_admin" | "pending_registry" | "completed" | "cancelled" | "undef";
+
+/** The latest transfer this account started for the domain (CHECK_TRANSFER with check_status=1,
+ *  research/opensrs/check_transfer.md), with when it last changed, or null when Tucows could not be
+ *  asked. Asking also makes Tucows finish a transfer the registry has approved within minutes. */
+export async function transferStatus(domain: string): Promise<{ state: TransferState; at: number | null; reason: string } | null> {
+  const r = await call("CHECK_TRANSFER", { domain, check_status: 1 }, "DOMAIN", 20);
+  if (!r.transport || r.code !== 200) return null;
+  const s = str(r.attributes.status).toLowerCase();
+  const state: TransferState = ["pending_owner", "pending_admin", "pending_registry", "completed", "cancelled"].includes(s) ? (s as TransferState) : "undef";
+  const at = parseInt(str(r.attributes.unixtime), 10);
+  return { state, at: Number.isFinite(at) ? at : null, reason: str(r.attributes.reason) };
+}
+
 /** The state of an OpenSRS order: completed, pending, declined, cancelled, waiting... or null. */
 export async function orderStatus(orderId: string): Promise<string | null> {
   const r = await call("GET_ORDER_INFO", { order_id: orderId }, "DOMAIN", 20);

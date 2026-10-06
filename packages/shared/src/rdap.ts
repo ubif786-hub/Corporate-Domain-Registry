@@ -26,6 +26,8 @@ export interface RdapRecord {
   admin: WhoisContact | null;
   tech: WhoisContact | null;
   created_at: string | null;
+  /** The last move to another registrar, as the registry records it. */
+  transferred_at: string | null;
   updated_at: string | null;
   /** The registry's expiry date. */
   expires_at: string | null;
@@ -147,6 +149,7 @@ export function parseRdap(d: Json): RdapRecord {
     admin: contact(withRole(d, "administrative")),
     tech: contact(withRole(d, "technical")),
     created_at: event("registration"),
+    transferred_at: event("transfer"),
     updated_at: event("last changed"),
     expires_at: event("expiration", "registrar expiration"),
     registrar_expires_at: event("registrar expiration"),
@@ -175,6 +178,7 @@ export function mergeRdap(registry: RdapRecord, registrar: RdapRecord | null): R
     admin: registrar.admin ?? registry.admin,
     tech: registrar.tech ?? registry.tech,
     created_at: registry.created_at ?? registrar.created_at,
+    transferred_at: registry.transferred_at ?? registrar.transferred_at,
     updated_at: registry.updated_at ?? registrar.updated_at,
     expires_at: registry.expires_at ?? registrar.expires_at,
     registrar_expires_at: registrar.registrar_expires_at ?? registry.registrar_expires_at,

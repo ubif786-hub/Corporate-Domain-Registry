@@ -12,22 +12,24 @@
 import { sql } from "drizzle-orm";
 import { bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { CheckoutRegistrant, Currency, LineService, LineState, OrderStatus } from "@cdr/shared";
-import type { FailReason, Order, OrderLine, OrderStripe } from "./order.types";
+import type { FailReason, LineTransfer, Order, OrderLine, OrderStripe } from "./order.types";
 
 /* The allowed values, checked by the database as well as by TypeScript. The type lines below fail
    to compile if a status is added to @cdr/shared without being added here (and to a migration). */
 export const ORDER_STATUSES = [
-  "pending_payment", "authorized", "fulfilling", "pending", "registered", "partially_registered", "failed",
+  "pending_payment", "authorized", "fulfilling", "pending", "transferring", "registered", "partially_registered", "failed",
   "expired", "payment_failed", "amount_mismatch", "settle_error", "needs_review", "stripe_error",
 ] as const satisfies readonly OrderStatus[];
-export const LINE_STATES = ["new", "registering", "registered", "pending", "failed", "unknown"] as const satisfies readonly LineState[];
+export const LINE_STATES = ["awaiting_code", "new", "registering", "registered", "pending", "failed", "unknown"] as const satisfies readonly LineState[];
+const LINE_SERVICES = ["register", "renew", "transfer"] as const satisfies readonly LineService[];
 const CURRENCIES = ["usd", "cad"] as const satisfies readonly Currency[];
-const FAIL_REASONS = ["taken", "tucows_on_hold", "rejected", "error"] as const satisfies readonly FailReason[];
+const FAIL_REASONS = ["taken", "tucows_on_hold", "rejected", "error", "no_code"] as const satisfies readonly FailReason[];
 type Complete<All, Listed> = [Exclude<All, Listed>] extends [never] ? true : never;
 const _statuses: Complete<OrderStatus, (typeof ORDER_STATUSES)[number]> = true;
 const _states: Complete<LineState, (typeof LINE_STATES)[number]> = true;
 const _reasons: Complete<FailReason, (typeof FAIL_REASONS)[number]> = true;
-void _statuses; void _states; void _reasons;
+const _services: Complete<LineService, (typeof LINE_SERVICES)[number]> = true;
+void _statuses; void _states; void _reasons; void _services;
 
 const oneOf = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(", "));
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -87,6 +89,8 @@ export const orderLines = pgTable("order_lines", {
   opensrs: jsonb("opensrs").$type<NonNullable<OrderLine["opensrs"]>>(),
   /** Copied out of `opensrs` for lookups. */
   opensrsOrderId: text("opensrs_order_id"),
+  /** A transfer's progress (order.types.ts LineTransfer); never the code. */
+  transfer: jsonb("transfer").$type<LineTransfer>(),
 }, (t) => [
   primaryKey({ columns: [t.orderId, t.position] }),
   check("order_lines_state_valid", sql`${t.state} in (${oneOf(LINE_STATES)})`),
@@ -95,8 +99,17 @@ export const orderLines = pgTable("order_lines", {
   check("order_lines_amount_not_negative", sql`${t.amountCents} >= 0`),
   index("order_lines_domain_idx").on(sql`lower(${t.domain})`),
   index("order_lines_opensrs_order_idx").on(t.opensrsOrderId),
-  check("order_lines_service_valid", sql`${t.service} in ('register', 'renew')`),
+  check("order_lines_service_valid", sql`${t.service} in (${oneOf(LINE_SERVICES)})`),
 ]);
+
+/** A transfer's code from the customer, apart from the order so no order view can show it.
+ *  Deleted once Tucows has taken it or the line is closed. */
+export const transferCodes = pgTable("transfer_codes", {
+  orderId: text("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  position: smallint("position").notNull(),
+  code: text("code").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.orderId, t.position] })]);
 
 export const orderLog = pgTable("order_log", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

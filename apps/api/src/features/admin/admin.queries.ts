@@ -43,7 +43,7 @@ export function summarise(o: Order): OrderSummary {
     created_at: o.created_at,
     currency: o.currency,
     subtotal_cents: o.subtotal_cents,
-    captured_cents: o.stripe.amount_captured ?? null,
+    captured_cents: o.stripe.amount_captured !== undefined ? o.stripe.amount_captured - (o.stripe.amount_refunded ?? 0) : null,
     name: `${r.first_name} ${r.last_name}`.trim(),
     org: r.org_name ?? "",
     email: r.email,
@@ -69,7 +69,7 @@ export interface Overview {
 export async function overview(testMode: boolean): Promise<Overview> {
   const d = await db();
   const paid = sql`o.test_mode = ${testMode} and o.status not in (${list(UNPAID)})`;
-  const captured = sql`coalesce((o.stripe->>'amount_captured')::bigint, 0)`;
+  const captured = sql`(coalesce((o.stripe->>'amount_captured')::bigint, 0) - coalesce((o.stripe->>'amount_refunded')::bigint, 0))`;
 
   const [totals] = (await d.execute(sql`
     select
@@ -244,8 +244,8 @@ export async function customers(f: { text: string; limit: number; offset: number
       (select min(p.created_at) from paid p where lower(p.email) = latest.key) as first_order,
       (select count(*) from paid p where lower(p.email) = latest.key)::int as orders,
       (select count(*) from order_lines l join paid p on p.id = l.order_id where lower(p.email) = latest.key and l.state = 'registered')::int as domains,
-      (select coalesce(sum((p.stripe->>'amount_captured')::bigint), 0) from paid p where lower(p.email) = latest.key and p.currency = 'usd')::bigint as usd,
-      (select coalesce(sum((p.stripe->>'amount_captured')::bigint), 0) from paid p where lower(p.email) = latest.key and p.currency = 'cad')::bigint as cad
+      (select coalesce(sum(coalesce((p.stripe->>'amount_captured')::bigint, 0) - coalesce((p.stripe->>'amount_refunded')::bigint, 0)), 0) from paid p where lower(p.email) = latest.key and p.currency = 'usd')::bigint as usd,
+      (select coalesce(sum(coalesce((p.stripe->>'amount_captured')::bigint, 0) - coalesce((p.stripe->>'amount_refunded')::bigint, 0)), 0) from paid p where lower(p.email) = latest.key and p.currency = 'cad')::bigint as cad
     from latest
     order by latest.created_at desc
     limit ${f.limit} offset ${f.offset}`)).rows as Record<string, unknown>[];

@@ -22,19 +22,28 @@
 // the expiry year seen at checkout, so Tucows refuses a repeat once one went through (465); a lost
 // reply is settled by reading the expiry back from Tucows.
 //
+// TRANSFERS (service "transfer") start as awaiting_code: the customer sends the code from their
+// current company after paying (transfer.routes.ts), up to transferCodeDays. That is far past the
+// card hold, so a transfer is charged with the rest of the order (status "transferring") and
+// refunded if it never goes through. Then new -> registering -> pending (Tucows moving it) ->
+// registered (moved, with the paid years beyond the one a move adds renewed on top). A refused
+// code sends the line back to awaiting_code, up to MAX_ATTEMPTS codes. A lost reply is settled with
+// check_transfer before anything is sent again.
+//
 // CARD HOLDS LAST SEVEN DAYS. An order still pending on day six is settled anyway: registered and
 // still-pending names are charged, and CDR is told to check.
 
 import type { OrderStatus } from "@cdr/shared";
+import { config } from "../../core/config";
 import { money } from "../../core/money";
 import { isoNow, sleep, toUnix, unixNow } from "../../core/time";
 import * as opensrs from "../../integrations/opensrs/client";
 import { stripe } from "../../integrations/stripe/client";
 import { notifyCheck, sendFinalEmails } from "./order.emails";
-import { note, readOrder, updateOrder, withDriveLock } from "./order.store";
-import type { Order, OrderLine } from "./order.types";
+import { dropTransferCode, note, readOrder, transferCode, updateOrder, withDriveLock } from "./order.store";
+import type { LineTransfer, Order, OrderLine } from "./order.types";
 
-export const DRIVABLE: readonly OrderStatus[] = ["authorized", "fulfilling", "pending", "settle_error"];
+export const DRIVABLE: readonly OrderStatus[] = ["authorized", "fulfilling", "pending", "transferring", "settle_error"];
 const MAX_ATTEMPTS = 3;
 const SETTLE_AFTER_SECONDS = 6 * 86_400;
 
@@ -134,6 +143,10 @@ export async function recordExpired(orderId: string): Promise<Order | null> {
 /* ---------- registration ---------- */
 
 const isFinal = (l: OrderLine) => l.state === "registered" || l.state === "failed";
+const isTransfer = (l: OrderLine) => l.service === "transfer";
+const YEAR_MS = 365.2425 * 86_400_000;
+
+const tucowsSaid = (r: opensrs.OpsResult) => ("Tucows replied " + (r.transport ? `${r.code} ${r.text}` : `nothing (${r.error})`)).replace(/\.*$/, ".");
 
 /** iso plus whole years, as ISO. */
 const plusYears = (iso: string, years: number) => {
@@ -194,6 +207,7 @@ async function fulfilLine(id: string, i: number): Promise<void> {
   const line = order.lines[i];
   if (isFinal(line)) return;
   if (line.service === "renew") return renewLine(id, i, line);
+  if (line.service === "transfer") return transferLine(id, i, order, line);
 
   if (line.state === "new") {
     if (line.attempts >= MAX_ATTEMPTS) {
@@ -314,15 +328,139 @@ async function renewLine(id: string, i: number, line: OrderLine): Promise<void> 
   }
 }
 
+/* ---------- transfers ---------- */
+
+/** Moves one transfer one step. The code is read from its own table and dropped once Tucows has it. */
+async function transferLine(id: string, i: number, order: Order, line: OrderLine): Promise<void> {
+  const t: LineTransfer = line.transfer ?? {};
+
+  if (line.state === "awaiting_code") {
+    const days = config().transferCodeDays;
+    const paid = toUnix(order.stripe.authorized_at ?? order.created_at) ?? unixNow();
+    if (unixNow() - paid > days * 86_400) {
+      await dropTransferCode(id, i);
+      await setLine(id, i, { state: "failed", reason: "no_code" }, `No working transfer code within ${days} days; it will be refunded.`);
+    }
+    return;
+  }
+
+  if (line.state === "new") {
+    if (line.attempts >= MAX_ATTEMPTS) {
+      await dropTransferCode(id, i);
+      await setLine(id, i, { state: "failed", reason: "error" }, `Gave up after ${MAX_ATTEMPTS} attempts.`);
+      return;
+    }
+    const code = await transferCode(id, i);
+    if (code === null) {
+      await setLine(id, i, { state: "awaiting_code" }, "No code on file; waiting for the customer's code.");
+      return;
+    }
+    await setLine(id, i, { state: "registering", attempts: line.attempts + 1, attempted_at: isoNow() }, "Sending the transfer to Tucows.");
+    const r = await opensrs.transfer(line.domain, code, order.registrant, order.registrant_ip ?? "");
+    const a = r.attributes;
+    const tucows = { order_id: typeof a.id === "string" ? a.id : null, code: r.code, text: r.text };
+    const said = tucowsSaid(r);
+    if (!r.transport) {
+      await setLine(id, i, { state: "unknown", opensrs: tucows }, said + " Will ask Tucows what happened before sending again.");
+    } else if ((typeof a.forced_pending === "string" && a.forced_pending !== "" && a.forced_pending !== "0") || r.code === 440) {
+      await dropTransferCode(id, i);
+      await setLine(id, i, { state: "failed", reason: "tucows_on_hold", opensrs: tucows }, said + " Order put on hold by Tucows: cancel it in the Tucows panel.");
+    } else if (r.code === 200) {
+      await dropTransferCode(id, i);
+      await setLine(id, i, { state: "pending", opensrs: tucows, transfer: { ...t, status: "pending_owner", last_error: undefined } }, said);
+    } else {
+      await codeRefused(id, i, line.attempts + 1, t, r.text || said, tucows);
+    }
+    return;
+  }
+
+  if (line.state === "registering" || line.state === "unknown") {
+    // Did the last send reach Tucows? Only a transfer state from around that send counts.
+    const st = await opensrs.transferStatus(line.domain);
+    if (!st) return; // Tucows not reachable: try again on the next pass
+    const fresh = st.at !== null && st.at >= (toUnix(line.attempted_at) ?? 0) - 300;
+    if (fresh && st.state === "cancelled") {
+      await codeRefused(id, i, line.attempts, t, st.reason || "Tucows cancelled the transfer.");
+    } else if (fresh && st.state !== "undef") {
+      await dropTransferCode(id, i);
+      await setLine(id, i, { state: "pending", transfer: { ...t, status: st.state } }, `Found the transfer at Tucows, ${st.state}.`);
+    } else {
+      await setLine(id, i, { state: "new" }, "Tucows has no transfer from the last attempt; will send it again.");
+    }
+    return;
+  }
+
+  if (line.state === "pending") {
+    if (t.completed_expiry) return addPaidYears(id, i, line, t);
+    const st = await opensrs.transferStatus(line.domain);
+    if (!st) return;
+    if (st.state === "completed") {
+      const now = await opensrs.domainExpiry(line.domain);
+      if (now.status !== "ours") return; // Tucows has not caught up yet: the next pass
+      // The years the move added (usually one); the rest of the paid years are renewed on top.
+      const before = line.expires_at ? Date.parse(line.expires_at) : NaN;
+      const added = Number.isNaN(before) ? 1 : Math.max(0, Math.round((Date.parse(now.expires_at) - before) / YEAR_MS));
+      const extra = Math.max(0, line.term - added);
+      if (!extra) {
+        await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: now.expires_at, transfer: { ...t, status: "completed" } }, `Transferred; Tucows shows the expiry ${now.expires_at.slice(0, 10)}.`);
+        return;
+      }
+      const next: LineTransfer = { ...t, status: "completed", completed_expiry: now.expires_at, extra_years: extra };
+      await setLine(id, i, { transfer: next }, `Transferred; renewing the ${extra} more ${extra === 1 ? "year" : "years"} paid for.`);
+      return addPaidYears(id, i, line, next);
+    }
+    if (st.state === "cancelled") return codeRefused(id, i, line.attempts, t, st.reason || "The transfer was cancelled.");
+    if (st.state !== t.status && st.state !== "undef") await setLine(id, i, { transfer: { ...t, status: st.state } }, `Transfer at Tucows: ${st.state}.`);
+  }
+}
+
+/** The code did not work, or the move was cancelled: wait for a new code, until the tries run out. */
+async function codeRefused(id: string, i: number, attempts: number, t: LineTransfer, why: string, tucows?: OrderLine["opensrs"]): Promise<void> {
+  await dropTransferCode(id, i);
+  const fields: Partial<OrderLine> = { transfer: { ...t, status: "cancelled", last_error: why } };
+  if (tucows) fields.opensrs = tucows;
+  if (attempts >= MAX_ATTEMPTS) await setLine(id, i, { ...fields, state: "failed", reason: "rejected" }, `${why} Gave up after ${MAX_ATTEMPTS} codes; it will be refunded.`);
+  else await setLine(id, i, { ...fields, state: "awaiting_code" }, `${why} Waiting for a new code.`);
+}
+
+/** After the move, the paid years it did not add, renewed from the new expiry. A lost reply is
+ *  settled by reading the expiry back first, so the years are never added twice. */
+async function addPaidYears(id: string, i: number, line: OrderLine, t: LineTransfer): Promise<void> {
+  const from = t.completed_expiry as string;
+  const fromYear = new Date(from).getUTCFullYear();
+  const years = t.extra_years ?? 0;
+  const now = await opensrs.domainExpiry(line.domain);
+  if (now.status === "error") return;
+  if (now.status === "ours" && new Date(now.expires_at).getUTCFullYear() > fromYear) {
+    await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: now.expires_at }, `Tucows shows the new expiry ${now.expires_at.slice(0, 10)}: renewed.`);
+    return;
+  }
+  const r = await opensrs.renew(line.domain, fromYear, years);
+  if (!r.transport) return; // read the expiry again on the next pass
+  if (r.code === 200) {
+    await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: r.expires_at ?? plusYears(from, years) }, tucowsSaid(r));
+    return;
+  }
+  // Moved, but the extra years were refused: CDR renews by hand or refunds the difference.
+  await setLine(id, i, { state: "registered", registered_at: isoNow(), expires_at: from }, `${tucowsSaid(r)} The ${years} extra ${years === 1 ? "year was" : "years were"} not added.`);
+  const order = await readOrder(id);
+  if (order) {
+    await notifyCheck(order, `CHECK order ${id}: ${line.domain} moved, extra years not added`,
+      `${line.domain} was transferred, but Tucows refused the renewal of ${years} more ${years === 1 ? "year" : "years"} (${tucowsSaid(r)})\n\nRenew it in the Tucows panel, or refund the difference in Stripe.`);
+  }
+}
+
 /* ---------- the money ---------- */
 
 /** When every line is final (or the hold is about to lapse), take the money for what registered
- *  and release the rest, then email the customer and CDR once. */
+ *  and release the rest, then email the customer and CDR once. Transfers still waiting are charged
+ *  now and refunded later if they never go through (closeTransfers). */
 async function settle(id: string): Promise<OrderStatus | null> {
   const order = await readOrder(id);
   if (!order) return null;
+  if (order.stripe.settled_at) return closeTransfers(order);
   const states = order.lines.map((l) => l.state);
-  const open = states.some((s) => s !== "registered" && s !== "failed");
+  const open = order.lines.some((l) => !isTransfer(l) && !isFinal(l));
   const age = unixNow() - (toUnix(order.stripe.authorized_at ?? order.created_at) ?? unixNow());
   const forced = open && age > SETTLE_AFTER_SECONDS;
 
@@ -336,7 +474,8 @@ async function settle(id: string): Promise<OrderStatus | null> {
   // (pending, or sent with the reply lost). A line never sent ("new") is not charged.
   let chargeable = 0;
   for (const l of order.lines) {
-    if (l.state === "registered" || (forced && (l.state === "pending" || l.state === "registering" || l.state === "unknown"))) chargeable += l.amount_cents;
+    if (l.state === "registered" || (isTransfer(l) && l.state !== "failed")
+      || (forced && (l.state === "pending" || l.state === "registering" || l.state === "unknown"))) chargeable += l.amount_cents;
   }
   const authorized = order.stripe.amount_authorized ?? 0;
   // A promotion code discounts the whole order; the capture keeps the same proportion.
@@ -366,18 +505,73 @@ async function settle(id: string): Promise<OrderStatus | null> {
   }
 
   const registered = order.lines.filter((l) => l.state === "registered").length;
+  const transfers = capture > 0 && order.lines.some((l) => isTransfer(l) && !isFinal(l));
   // A forced settle leaves names Tucows may still complete or decline. The money is already taken,
-  // so the order stops being driven automatically and CDR checks it by hand.
-  const status: OrderStatus = forced ? "needs_review" : capture === 0 ? "failed" : registered === order.lines.length ? "registered" : "partially_registered";
+  // so the order stops being driven automatically and CDR checks it by hand (after its transfers).
+  const status: OrderStatus = transfers ? "transferring" : forced ? "needs_review" : capture === 0 ? "failed" : registered === order.lines.length ? "registered" : "partially_registered";
   const settled = await updateOrder(id, (o) => {
     o.status = status;
     o.stripe.amount_captured = capture;
     o.stripe.settled_at = isoNow();
     delete o.stripe.settle_error;
     if (forced) o.settled_early = true;
+    // Each waiting transfer's share of the charge, which is what its refund would be.
+    for (const l of o.lines) {
+      if (isTransfer(l) && l.state !== "failed" && o.subtotal_cents > 0) l.transfer = { ...l.transfer, charged_cents: Math.round((authorized * l.amount_cents) / o.subtotal_cents) };
+    }
     note(o, capture ? `Captured ${money(capture, o.currency)}.` : "Nothing registered: card hold released.");
     return o;
   });
-  if (settled) await sendFinalEmails(settled);
+  if (settled && !transfers) await sendFinalEmails(settled);
+  return status;
+}
+
+/** After the charge: refund each transfer that ended without moving, and close the order once
+ *  every transfer is done. A refund Stripe refuses is retried on the next pass; CDR is told once. */
+async function closeTransfers(order: Order): Promise<OrderStatus> {
+  const id = order.id;
+  const owed = (l: OrderLine) => isTransfer(l) && l.state === "failed" && (l.transfer?.charged_cents ?? 0) > 0 && !l.transfer?.refunded_cents;
+  let refunded = order.stripe.amount_refunded ?? 0;
+  for (const [i, l] of order.lines.entries()) {
+    if (!owed(l)) continue;
+    const amount = Math.min(l.transfer?.charged_cents ?? 0, (order.stripe.amount_captured ?? 0) - refunded);
+    if (amount <= 0) continue;
+    const r = await stripe("POST", "/refunds", {
+      payment_intent: order.stripe.payment_intent ?? "",
+      amount,
+      reason: "requested_by_customer",
+      metadata: { order_id: id, domain: l.domain },
+    }, `cdr-refund-${id}-${i}`);
+    if (r.status !== 200 || !["succeeded", "pending"].includes(r.body?.status)) {
+      const message: string = r.body?.error?.message ?? `HTTP ${r.status}`;
+      const first = !order.stripe.settle_error;
+      const updated = await updateOrder(id, (o) => { o.stripe.settle_error = message; note(o, `${l.domain}: Stripe refund failed: ${message}`); return o; });
+      if (first && updated) {
+        await notifyCheck(updated, `CHECK order ${id}: Stripe could not refund ${l.domain}`,
+          `Stripe said: ${message}\n\nThe sweep keeps retrying. Check the payment in the Stripe dashboard.`);
+      }
+      return "transferring";
+    }
+    refunded += amount;
+    await updateOrder(id, (o) => {
+      o.lines[i].transfer = { ...o.lines[i].transfer, refunded_cents: amount, refund_id: r.body.id };
+      o.stripe.amount_refunded = refunded;
+      delete o.stripe.settle_error;
+      note(o, `${l.domain}: refunded ${money(amount, o.currency)}.`);
+      return o;
+    });
+  }
+
+  const now = await readOrder(id);
+  if (!now || now.lines.some((l) => !isFinal(l) || owed(l))) return "transferring";
+  const registered = now.lines.filter((l) => l.state === "registered").length;
+  const status: OrderStatus = now.settled_early ? "needs_review" : registered === now.lines.length ? "registered" : registered ? "partially_registered" : "failed";
+  const closed = await updateOrder(id, (o) => {
+    if (o.status !== "transferring") return null;
+    o.status = status;
+    note(o, "Every transfer is done.");
+    return o;
+  });
+  if (closed && closed.status === status) await sendFinalEmails(closed);
   return status;
 }

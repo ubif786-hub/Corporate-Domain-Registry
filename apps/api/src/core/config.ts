@@ -24,6 +24,8 @@ export interface Config {
   lowBalanceUsd: number;
   /** Days between reports; 0 turns the report off. */
   reportDays: number;
+  /** Days a paid transfer waits for the customer's code before it is refunded. */
+  transferCodeDays: number;
   fromEmail: string;
   /** resend: Resend's HTTPS API (DigitalOcean blocks mail ports); file: an outbox folder beside
    *  the orders, for local proof; log: one line per email to the process log, no body. */
@@ -44,6 +46,7 @@ export interface Config {
   /** Local tests only: point the API at a stand-in for Tucows or Stripe. */
   opensrsUrl: string;
   stripeApi: string;
+  rdapBootstrap: string;
 }
 
 export const CONFIG_PATH = resolve(process.env.CDR_CONFIG || "/srv/cdr/cdr.env");
@@ -66,6 +69,7 @@ function parse(raw: Record<string, string | undefined>): Config {
   const cadRate = Number(clean(raw.CAD_RATE) || "1");
   const lowBalance = Number(clean(raw.LOW_BALANCE_USD) || "50");
   const reportDays = Number(clean(raw.REPORT_DAYS) || "7");
+  const transferDays = Number(clean(raw.TRANSFER_CODE_DAYS) || "90");
   return {
     stripeSecretKey: clean(raw.STRIPE_SECRET_KEY),
     stripeWebhookSecret: clean(raw.STRIPE_WEBHOOK_SECRET),
@@ -74,6 +78,7 @@ function parse(raw: Record<string, string | undefined>): Config {
     alertEmail: clean(raw.ALERT_EMAIL) || clean(raw.NOTIFY_EMAIL),
     lowBalanceUsd: Number.isFinite(lowBalance) && lowBalance >= 0 ? lowBalance : 50,
     reportDays: Number.isInteger(reportDays) && reportDays >= 0 ? reportDays : 7,
+    transferCodeDays: Number.isInteger(transferDays) && transferDays >= 1 ? transferDays : 90,
     fromEmail,
     mailTransport: transport === "resend" || transport === "log" ? transport : "file",
     resendApiKey: clean(raw.RESEND_API_KEY),
@@ -89,6 +94,7 @@ function parse(raw: Record<string, string | undefined>): Config {
     geoipDb: resolve(clean(raw.GEOIP_DB) || "/srv/cdr/geo/dbip-city-lite.mmdb"),
     opensrsUrl: clean(raw.OPENSRS_URL),
     stripeApi: (clean(raw.STRIPE_API) || "https://api.stripe.com/v1").replace(/\/+$/, ""),
+    rdapBootstrap: clean(raw.RDAP_BOOTSTRAP) || "https://data.iana.org/rdap/dns.json",
   };
 }
 

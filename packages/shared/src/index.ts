@@ -96,21 +96,26 @@ export const CA_LEGAL_TYPES: { code: string; label: string; org: boolean }[] = [
 
 /* ---------- the API contract ---------- */
 
-/** What a cart line buys. A renewal is only for a domain already in CDR's Tucows account. */
-export type LineService = "register" | "renew";
+/** What a cart line buys. A renewal is for a domain already in CDR's Tucows account; a transfer
+ *  moves a domain held elsewhere into it, the code following after payment. */
+export type LineService = "register" | "renew" | "transfer";
 
 /** GET /api/renew-check/?domain= */
 export interface RenewCheckResponse {
   domain: string;
-  /** renewable: in CDR's Tucows account; not_ours: registered elsewhere (or not at all) */
-  status: "renewable" | "not_ours" | "invalid" | "error";
+  /** renewable: in CDR's Tucows account; transferable: held elsewhere and free to move here;
+   *  not_transferable: held elsewhere but the registry would refuse a move now (reason says why);
+   *  not_registered: nobody holds it (search it to register it) */
+  status: "renewable" | "transferable" | "not_transferable" | "not_registered" | "invalid" | "error";
   /** "USD" or "CAD" */
   currency: string;
-  /** Only when renewable. */
+  /** When renewable or transferable (a transfer: as the registry shows it, so it may be missing). */
   expires_at?: string;
   /** The most years it can be renewed by: a registration may not run past ten years. */
   max_term?: number;
   prices?: Record<string, number>;
+  /** Only when not_transferable. */
+  reason?: string;
 }
 
 /** GET /api/whois/?domain= (the registry's RDAP record merged with the registrar's) */
@@ -181,11 +186,13 @@ export interface ApiError {
 
 /** GET /api/order-status/?order=&t= */
 export type OrderStatus =
-  | "pending_payment" | "authorized" | "fulfilling" | "pending"
+  | "pending_payment" | "authorized" | "fulfilling" | "pending" | "transferring"
   | "registered" | "partially_registered" | "failed"
   | "expired" | "payment_failed" | "amount_mismatch" | "settle_error" | "needs_review" | "stripe_error";
 
-export type LineState = "new" | "registering" | "registered" | "pending" | "failed" | "unknown";
+/** A transfer starts as awaiting_code (paid, waiting for the customer's code); "registered" on it
+ *  means transferred. */
+export type LineState = "awaiting_code" | "new" | "registering" | "registered" | "pending" | "failed" | "unknown";
 
 export interface OrderStatusResponse {
   order: string;
@@ -194,7 +201,7 @@ export interface OrderStatusResponse {
   currency: string;
   /** state "registered" on a renewal means renewed. */
   lines: { domain: string; term: number; state: LineState; service: LineService }[];
-  /** Whole currency units actually charged, once settled. */
+  /** Whole currency units actually charged once settled, less refunds. */
   charged: number | null;
   email: string;
 }
@@ -206,4 +213,15 @@ export interface GeoResponse {
   region: string | null;
   ip: string | null;
   host: string | null;
+}
+
+/** GET /api/transfer-code/?order=&line=&t= (the personal link in the transfer email) */
+export interface TransferCodeResponse {
+  domain: string;
+  /** awaiting_code: send the code; received: a code is being used; transferred; closed: refunded or cancelled */
+  status: "awaiting_code" | "received" | "transferred" | "closed";
+  /** Why the last code did not work, when the line is back to awaiting_code. */
+  last_error?: string;
+  /** When an unused transfer is refunded (ISO). */
+  refund_after?: string;
 }

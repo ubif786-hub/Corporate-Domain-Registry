@@ -126,7 +126,7 @@ export async function reportData(c: Config, since: number, now: number): Promise
   const from = new Date(since);
   const to = new Date(now);
   const inPeriod = sql`and o.created_at >= ${from} and o.created_at < ${to}`;
-  const captured = sql`coalesce((o.stripe->>'amount_captured')::bigint, 0)`;
+  const captured = sql`(coalesce((o.stripe->>'amount_captured')::bigint, 0) - coalesce((o.stripe->>'amount_refunded')::bigint, 0))`;
 
   const totals = async (window: boolean) => ((await d.execute(sql`
     select count(*)::int as orders,

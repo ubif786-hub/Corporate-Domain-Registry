@@ -1,10 +1,27 @@
 import type { CheckoutRegistrant, Currency, LineService, LineState, OrderStatus } from "@cdr/shared";
 
-export type FailReason = "taken" | "tucows_on_hold" | "rejected" | "error";
+/** no_code: a paid transfer whose code never came; it is refunded. */
+export type FailReason = "taken" | "tucows_on_hold" | "rejected" | "error" | "no_code";
+
+/** A transfer's progress beyond its line state. The customer's code is NOT here: it is kept in its
+ *  own table (order.store.ts) so it never reaches the admin pages, the CSV or a log. */
+export interface LineTransfer {
+  /** Why the last code did not work, shown on the code page while a new one is awaited. */
+  last_error?: string;
+  /** Tucows' transfer state as last seen (check_transfer). */
+  status?: string;
+  /** The expiry right after the move, and the paid years still to add to it with a renewal. */
+  completed_expiry?: string;
+  extra_years?: number;
+  /** What this line cost the card (its share of a promotion included), set when the order is charged. */
+  charged_cents?: number;
+  refunded_cents?: number;
+  refund_id?: string;
+}
 
 export interface OrderLine {
   domain: string;
-  /** A renewal reuses the registration states: "registered" means renewed. */
+  /** A renewal or a transfer reuses the registration states: "registered" means renewed or transferred. */
   service: LineService;
   label: string;
   term: number;
@@ -14,7 +31,8 @@ export interface OrderLine {
   attempted_at?: string;
   registered_at?: string;
   /** The domain's expiry date as last known. A renewal carries the date Tucows reported at checkout
-   *  (its year guards against renewing twice) until it goes through, then the new date. */
+   *  (its year guards against renewing twice) until it goes through, then the new date; a transfer
+   *  the registry's date at checkout, so the years the move added can be counted. */
   expires_at?: string;
   reason?: FailReason;
   opensrs?: {
@@ -24,6 +42,7 @@ export interface OrderLine {
     text?: string;
     reg_username?: string;
   };
+  transfer?: LineTransfer;
 }
 
 export interface OrderStripe {
@@ -37,6 +56,8 @@ export interface OrderStripe {
   amount_authorized?: number;
   authorized_at?: string;
   amount_captured?: number;
+  /** Refunds after the capture (transfers that never went through). */
+  amount_refunded?: number;
   settled_at?: string;
   settle_error?: string;
   error?: { http: number; type: string | null; message: string | null };

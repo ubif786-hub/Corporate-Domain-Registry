@@ -7,6 +7,15 @@ import type { OrderLine } from "../orders/order.types";
 
 export const MAX_ITEMS = 10;
 
+const LABELS: Record<LineService, string> = { register: "Domain registration", renew: "Domain renewal", transfer: "Domain transfer" };
+
+/** Makes a line the given service. A transfer starts waiting for the customer's code. */
+export function asService(line: OrderLine, service: LineService): void {
+  line.service = service;
+  line.label = LABELS[service];
+  line.state = service === "transfer" ? "awaiting_code" : "new";
+}
+
 export interface ValidCart {
   lines: OrderLine[];
   /** For each line, its position in the cart the browser sent, so errors point at the right row. */
@@ -25,8 +34,8 @@ export function validateCart(rawItems: unknown, currency: Currency, cadRate: num
   const seen = new Set<string>();
   items.forEach((item, i) => {
     const domain = normaliseDomain(typeof item?.domain === "string" ? item.domain : "");
-    // A renewal can be for any extension: whether the domain is in CDR's account is checked at Tucows.
-    const service: LineService = item?.service === "renew" ? "renew" : "register";
+    // A renewal or transfer can be for any extension: checkout decides which, and whether it can be done.
+    const service: LineService = item?.service === "renew" || item?.service === "transfer" ? item.service : "register";
     const n = Number(item?.term);
     const term = Number.isFinite(n) ? Math.trunc(n) : 0;
     if (!isValidDomain(domain)) { lineErrors[i] = "This is not a domain name we can register."; return; }
@@ -36,7 +45,9 @@ export function validateCart(rawItems: unknown, currency: Currency, cadRate: num
     if (seen.has(domain)) return;
     seen.add(domain);
     positions.push(i);
-    lines.push({ domain, service, label: service === "renew" ? "Domain renewal" : "Domain registration", term, amount_cents: amount, state: "new", attempts: 0 });
+    const line: OrderLine = { domain, service, label: "", term, amount_cents: amount, state: "new", attempts: 0 };
+    asService(line, service);
+    lines.push(line);
   });
   return { lines, positions, lineErrors };
 }

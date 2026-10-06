@@ -1,6 +1,7 @@
 "use client";
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { RenewCheckResponse } from "@cdr/shared";
 import { Badge } from "@/components/Badge";
@@ -19,10 +20,11 @@ import { formatDate } from "@/data/lookup";
 import { CONTACT, SERVICE_LABELS, TERMS, money, priceForTerm, type Term } from "@/data/site";
 import { SHOP_OPEN } from "@/data/shop";
 
-/* The renewal page: a domain registered through CDR (in CDR's Tucows account) is looked up
-   (GET /api/renew-check/), its expiry shown, and a renewal goes in the cart like a registration.
-   Checkout asks Tucows again before the card is touched, and the card is only charged once the
-   renewal went through. Not in the menu: the client sends the link to past buyers. */
+/* The renewal page, for any domain (GET /api/renew-check/). One with CDR is renewed in place; one
+   held at another company is renewed by moving it here, which the page says plainly: paid now, the
+   transfer code from the current company asked for by email after, refunded if it never moves.
+   Both go in the cart as a renewal; checkout decides which it is and asks again before the card is
+   touched. Not in the menu: the client sends the link in letters and to past buyers. */
 
 const columnStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--flow-group)" };
 const resultStyle: CSSProperties = {
@@ -120,12 +122,14 @@ export function RenewPanel({ domain }: { domain: string }) {
             ) : phase.kind === "done" ? (
               <div style={resultStyle} data-ds-renew={phase.check.status}>
                 <div style={resultHeadStyle}><Heading level={2} size={4}>{phase.check.domain}</Heading></div>
-                {phase.check.status === "renewable" ? (
+                {phase.check.status === "renewable" || phase.check.status === "transferable" ? (
                   <Renewal check={phase.check} expired={phase.expired} />
-                ) : phase.check.status === "not_ours" ? (
+                ) : phase.check.status === "not_transferable" ? (
+                  <p style={bodyStyle}>{phase.check.reason} If you have a question about it, email us at {email}.</p>
+                ) : phase.check.status === "not_registered" ? (
                   <p style={bodyStyle}>
-                    We can only renew domains registered with us. If you registered this domain somewhere else and
-                    want to move it to us, email us at {email}.
+                    Nobody has registered this domain yet.{" "}
+                    <Link href={`/search?domain=${encodeURIComponent(phase.check.domain)}`} style={linkStyle}>Search for it to register it</Link>.
                   </p>
                 ) : (
                   <p style={bodyStyle}>This does not look like a domain name. Enter it with its extension, like myawesomedomain.com.</p>
@@ -150,17 +154,27 @@ function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boole
   const domain = check.domain;
   const inCart = cart.items.some((i) => i.id === `renew:${domain}`);
   const expires = check.expires_at ?? null;
+  const elsewhere = check.status === "transferable";
 
   if (max < 1) {
     return <p style={bodyStyle}>This domain runs until {formatDate(expires)}, already as far ahead as the registry allows. There is nothing to renew yet.</p>;
   }
   return (
     <>
-      <p style={bodyStyle}>
-        {expired
-          ? <>This domain expired on {formatDate(expires)}. Renew it now, before the registry releases it.</>
-          : <>This domain is registered with us and runs until {formatDate(expires)}. A renewal adds years from that date.</>}
-      </p>
+      {elsewhere ? (
+        <p style={bodyStyle}>
+          This domain is registered with another company{expires ? <> and runs until {formatDate(expires)}</> : null}.
+          Renewing it here moves it to Corporate Domain Registry: you pay now, then we email you simple steps to get a
+          transfer code from your current company. Your website and email keep working, and the years you pay for are
+          added on top of the current expiry. If the move does not happen, you get a full refund.
+        </p>
+      ) : (
+        <p style={bodyStyle}>
+          {expired
+            ? <>This domain expired on {formatDate(expires)}. Renew it now, before the registry releases it.</>
+            : <>This domain is registered with us and runs until {formatDate(expires)}. A renewal adds years from that date.</>}
+        </p>
+      )}
       <div style={offerRowStyle}>
         <span style={offerLabelStyle}>{SERVICE_LABELS.renew}</span>
         <div style={offerActionsStyle}>

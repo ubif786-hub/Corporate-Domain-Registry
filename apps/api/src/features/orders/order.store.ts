@@ -18,7 +18,7 @@ import { config } from "../../core/config";
 import { database, db } from "../../core/db";
 import { dayStamp, isoNow, logStamp } from "../../core/time";
 import * as schema from "./order.schema";
-import { orderLines, orderLog, orders } from "./order.schema";
+import { orderLines, orderLog, orders, transferCodes } from "./order.schema";
 import type { Order, OrderLine } from "./order.types";
 
 /** The database handle or an open transaction: both can run the queries below. */
@@ -34,13 +34,21 @@ export function newOrderId(): string {
   return dayStamp() + "-" + randomBytes(5).toString("hex");
 }
 
-/** The token that lets the customer's browser read its own order's progress, and nobody else's. */
-export function orderToken(id: string): string {
+function orderSecret(): string {
   const c = config();
-  const secret = c.orderSecret !== ""
+  return c.orderSecret !== ""
     ? c.orderSecret
     : createHash("sha256").update(`cdr-order|${c.stripeSecretKey}|${c.stripeWebhookSecret}`).digest("hex");
-  return createHmac("sha256", secret).update(id).digest("hex").slice(0, 32);
+}
+
+/** The token that lets the customer's browser read its own order's progress, and nobody else's. */
+export function orderToken(id: string): string {
+  return createHmac("sha256", orderSecret()).update(id).digest("hex").slice(0, 32);
+}
+
+/** The token in a transfer's personal code link: one per line, so it opens that domain only. */
+export function transferToken(id: string, position: number): string {
+  return createHmac("sha256", orderSecret()).update(`transfer|${id}|${position}`).digest("hex").slice(0, 32);
 }
 
 /* ---------- rows <-> Order ---------- */
@@ -93,6 +101,7 @@ function lineRows(o: Order): (typeof orderLines.$inferInsert)[] {
     reason: l.reason ?? null,
     opensrs: l.opensrs ?? null,
     opensrsOrderId: l.opensrs?.order_id ?? null,
+    transfer: l.transfer ?? null,
   }));
 }
 
@@ -123,6 +132,7 @@ function lineFromRow(r: typeof orderLines.$inferSelect): OrderLine {
   if (r.expiresAt) l.expires_at = isoNow(r.expiresAt);
   if (r.reason) l.reason = r.reason;
   if (r.opensrs) l.opensrs = r.opensrs;
+  if (r.transfer) l.transfer = r.transfer;
   return l;
 }
 
@@ -220,6 +230,26 @@ export async function updateOrder(id: string, change: (o: Order) => Order | null
 export function note(order: Order, text: string): void {
   if (!Array.isArray(order.log)) order.log = [];
   order.log.push(`${logStamp()} UTC  ${text}`);
+}
+
+/* ---------- transfer codes, kept apart from the order ---------- */
+
+export async function saveTransferCode(orderId: string, position: number, code: string): Promise<void> {
+  const d = await db();
+  await d.insert(transferCodes).values({ orderId, position, code })
+    .onConflictDoUpdate({ target: [transferCodes.orderId, transferCodes.position], set: { code, createdAt: new Date() } });
+}
+
+export async function transferCode(orderId: string, position: number): Promise<string | null> {
+  const d = await db();
+  const [row] = await d.select({ code: transferCodes.code }).from(transferCodes)
+    .where(and(eq(transferCodes.orderId, orderId), eq(transferCodes.position, position)));
+  return row?.code ?? null;
+}
+
+export async function dropTransferCode(orderId: string, position: number): Promise<void> {
+  const d = await db();
+  await d.delete(transferCodes).where(and(eq(transferCodes.orderId, orderId), eq(transferCodes.position, position)));
 }
 
 /** Ids of the orders in these states, newest first (the sweep). */

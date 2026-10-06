@@ -12,6 +12,7 @@ import { geoRouter } from "./features/geo/geo.routes";
 import { orderStatusRouter } from "./features/orders/order-status.routes";
 import { renewRouter } from "./features/renew/renew.routes";
 import { stripeWebhookRouter } from "./features/stripe-webhook/stripe-webhook.routes";
+import { transferRouter } from "./features/transfer/transfer.routes";
 import { whoisRouter } from "./features/whois/whois.routes";
 
 export function createApp(options: { staticDir?: string } = {}) {
@@ -28,6 +29,7 @@ export function createApp(options: { staticDir?: string } = {}) {
   app.use(checkoutRouter);
   app.use(stripeWebhookRouter);
   app.use(orderStatusRouter);
+  app.use(transferRouter);
   app.use(adminRouter);
   app.use(cronRouter);
 

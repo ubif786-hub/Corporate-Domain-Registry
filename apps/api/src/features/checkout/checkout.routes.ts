@@ -1,14 +1,15 @@
 // POST /api/checkout/ — the registrant form and the cart in, a Stripe Checkout URL out.
 //
 // The page sends JSON: { items: [{domain, term, service}], registrant: {...}, agree, ca_agree }.
-// service is "register" (the default) or "renew"; ca_agree comes with a .ca registration.
+// service is "register" (the default), "renew" or "transfer"; ca_agree comes with a .ca registration.
 //
 // Every line is priced here from the catalogue, in the visitor's currency: CAD in Canada, USD
 // everywhere else, decided from the same IP database as the header chip.
 //
 // EVERY DOMAIN IS CHECKED AGAIN, straight at the registry (no cache), before Stripe is asked. A name
-// that went while it sat in the cart is refused here, before any card is touched. A renewal is
-// checked against CDR's Tucows account, and its expiry date is kept for the renewal itself.
+// that went while it sat in the cart is refused here, before any card is touched. "renew" and
+// "transfer" both mean renew from anywhere: a domain in CDR's Tucows account becomes a renewal, one
+// held elsewhere a transfer (checked against the registry's record), and its expiry is kept.
 
 import express, { Router } from "express";
 import { currencyForCountry, type CheckoutResponse } from "@cdr/shared";
@@ -19,7 +20,7 @@ import { visitorCountry, visitorIp } from "../../core/visitor";
 import { lookup } from "../../integrations/opensrs/client";
 import { checkRenewal } from "../renew/renew.service";
 import { startCheckout } from "./checkout.service";
-import { validateCa, validateCart, validateRegistrant } from "./checkout.validation";
+import { asService, validateCa, validateCart, validateRegistrant } from "./checkout.validation";
 
 export const checkoutRouter = Router();
 
@@ -52,15 +53,19 @@ checkoutRouter.all(
     const down = () => new HttpError(503, "registry_unavailable", "We could not confirm your domains with the registry just now. Nothing was charged; please try again in a moment.");
     for (const [n, line] of cart.lines.entries()) {
       const at = cart.positions[n];
-      if (line.service === "renew") {
+      if (line.service === "renew" || line.service === "transfer") {
         const r = await checkRenewal(line.domain);
         if (r.status === "error") throw down();
-        if (r.status === "not_ours") unavailable[at] = "We can only renew domains registered with us. Remove it from your cart to continue.";
+        if (r.status === "not_registered") unavailable[at] = "Nobody has registered this domain yet. Search for it to register it instead.";
+        else if (r.status === "not_transferable") unavailable[at] = r.reason;
         else if (line.term > r.max_term) {
           unavailable[at] = r.max_term > 0
             ? `This domain can be renewed for at most ${r.max_term} ${r.max_term === 1 ? "year" : "years"} now. Change the duration in your cart.`
             : "This domain is already renewed as far ahead as the registry allows.";
-        } else line.expires_at = r.expires_at;
+        } else {
+          asService(line, r.status === "renewable" ? "renew" : "transfer");
+          if (r.expires_at) line.expires_at = r.expires_at;
+        }
         continue;
       }
       const look = await lookup(line.domain, true);

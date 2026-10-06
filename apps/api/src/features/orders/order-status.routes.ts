@@ -48,9 +48,10 @@ orderStatusRouter.all("/api/order-status", allow("GET"), async (req, res) => {
     status: order.status,
     currency: order.currency.toUpperCase(),
     lines: order.lines.map((l) => ({ domain: l.domain, term: l.term, state: l.state, service: l.service })),
-    charged: order.stripe.amount_captured !== undefined ? order.stripe.amount_captured / 100 : null,
+    charged: order.stripe.amount_captured !== undefined ? (order.stripe.amount_captured - (order.stripe.amount_refunded ?? 0)) / 100 : null,
     email: order.registrant.email,
   };
   sendJson(res, 200, out);
-  if (DRIVABLE.includes(order.status)) afterReply("fulfil " + id, () => fulfil(id, 20));
+  // A transferring order waits days for the customer's code: the sweep and the code link drive it.
+  if (DRIVABLE.includes(order.status) && order.status !== "transferring") afterReply("fulfil " + id, () => fulfil(id, 20));
 });

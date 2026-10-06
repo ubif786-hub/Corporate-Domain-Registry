@@ -2,8 +2,8 @@
 // the registrar's record it links to. Redacted values are dropped; a 404 means not registered.
 
 import { mergeRdap, parseRdap, registrarLink, type RdapRecord } from "@cdr/shared";
+import { tryConfig } from "../../core/config";
 
-const BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
 const DAY_MS = 86_400_000;
 
 let servers: { at: number; byTld: Map<string, string> } | null = null;
@@ -12,7 +12,7 @@ let servers: { at: number; byTld: Map<string, string> } | null = null;
 async function serverFor(tld: string): Promise<string | null | undefined> {
   if (!servers || Date.now() - servers.at > DAY_MS) {
     try {
-      const res = await fetch(BOOTSTRAP, { signal: AbortSignal.timeout(10_000) });
+      const res = await fetch(tryConfig()?.rdapBootstrap ?? "https://data.iana.org/rdap/dns.json", { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) return servers?.byTld.get(tld) ?? (servers ? null : undefined);
       const data = (await res.json()) as { services?: [string[], string[]][] };
       const byTld = new Map<string, string>();

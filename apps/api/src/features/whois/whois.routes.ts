@@ -16,7 +16,7 @@ whoisRouter.all("/api/whois", allow("GET"), async (req, res) => {
   const domain = normaliseDomain(typeof req.query.domain === "string" ? req.query.domain : "");
   const out: WhoisResponse = {
     domain, status: "invalid", registry_domain_id: null, registrar: null, registrar_whois: null, registrar_iana_id: null, registrar_url: null, abuse_email: null, abuse_phone: null,
-    registrant: null, admin: null, tech: null, created_at: null, updated_at: null, expires_at: null, registrar_expires_at: null,
+    registrant: null, admin: null, tech: null, created_at: null, transferred_at: null, updated_at: null, expires_at: null, registrar_expires_at: null,
     record_updated_at: null, complaint_url: null, statuses: [], nameservers: [], dnssec: null, registrar_record_url: null, checked_at: isoNow(),
   };
   if (!isValidDomain(domain)) return sendJson(res, 200, out);

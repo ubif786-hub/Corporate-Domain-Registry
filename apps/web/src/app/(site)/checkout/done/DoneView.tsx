@@ -12,7 +12,8 @@ import { useCart } from "../../CartProvider";
  * and the token Stripe carried back in the address, and shows what the server knows: payment
  * confirmed, each domain registering, registered or not, and what was charged. Polling it also
  * nudges the order along (the server registers while the page waits), so a customer who stays
- * sees the result; one who leaves gets the same result by email.
+ * sees the result; one who leaves gets the same result by email. A transfer waits days for the
+ * customer's code, so polling stops once the order is "transferring" and the email takes over.
  *
  * The cart is emptied only once the server confirms the payment, so a checkout that expired or
  * failed keeps the cart for another try. */
@@ -40,19 +41,22 @@ const TOKEN = /^[a-f0-9]{32}$/;
 const POLL_MS = 3000;
 const GIVE_UP_MS = 180000;
 
-type LineState = "new" | "registering" | "registered" | "pending" | "failed" | "unknown";
+type LineState = "awaiting_code" | "new" | "registering" | "registered" | "pending" | "failed" | "unknown";
+type Service = "register" | "renew" | "transfer";
 interface Status {
   order: string;
   status: string;
   currency: string;
-  lines: { domain: string; term: number; state: LineState; service: "register" | "renew" }[];
+  lines: { domain: string; term: number; state: LineState; service: Service }[];
   charged: number | null;
   email: string;
 }
 
 const WAITING = ["pending_payment"];
 const WORKING = ["authorized", "fulfilling", "pending", "settle_error"];
-const PAID = [...WORKING, "registered", "partially_registered", "failed", "needs_review"];
+const PAID = [...WORKING, "transferring", "registered", "partially_registered", "failed", "needs_review"];
+// "registered" on a renewal means renewed, on a transfer moved here.
+const VERBS: Record<Service, string> = { register: "registered", renew: "renewed", transfer: "moved to us" };
 
 export function DoneView() {
   const { ready, items, clear } = useCart();
@@ -117,16 +121,22 @@ export function DoneView() {
   const charged = status?.charged != null ? `${money(status.charged, status.currency)} ${status.currency}` : null;
   const lines = status?.lines ?? [];
   const done = lines.filter((l) => l.state === "registered");
-  // "registered" on a renewal means renewed.
-  const verb = lines.length && lines.every((l) => l.service === "renew") ? "renewed" : lines.some((l) => l.service === "renew") ? "registered or renewed" : "registered";
+  const kinds = [...new Set(lines.map((l) => l.service))];
+  const verb = kinds.length === 1 ? VERBS[kinds[0]] : "all set";
+  const transfers = lines.filter((l) => l.service === "transfer");
   const newlyRegistered = done.filter((l) => l.service !== "renew");
 
   let headline: React.ReactNode;
   if (WAITING.includes(s)) headline = slow ? <>We have not had your payment confirmation yet. If you paid, we will email you at your address as soon as it arrives.</> : <>Confirming your payment with Stripe…</>;
   else if (WORKING.includes(s)) headline = slow ? <>The registry is taking longer than usual. You can close this page: we will email {status?.email} when it is done.</> : <>Payment confirmed. {verb === "renewed" ? "Renewing" : "Registering"} your domains, this usually takes under a minute…</>;
+  else if (s === "transferring") headline = <>Payment confirmed{charged ? <>, {charged} charged to your card</> : null}. We have emailed you simple steps to move {transfers.length === 1 ? transfers[0].domain : "your domains"} to us: get the transfer code from your current company and send it to us with the link in that email. If a move does not happen, you get a full refund.</>;
   else if (s === "registered") headline = <>All done. {done.length === 1 ? "Your domain is" : "Your domains are"} {verb}{charged ? <>, and {charged} was charged to your card</> : null}.</>;
-  else if (s === "partially_registered") headline = <>Some of your domains are {verb}. You were charged {charged ?? "only"} for those; nothing for the ones that did not go through.</>;
-  else if (s === "failed") headline = <>We are sorry: your order could not be completed. Your card was not charged, and the hold on it has been released.</>;
+  else if (s === "partially_registered") headline = transfers.length
+    ? <>Some of your domains are {verb}. You paid {charged ?? "only"} for those; the others were not charged or were refunded.</>
+    : <>Some of your domains are {verb}. You were charged {charged ?? "only"} for those; nothing for the ones that did not go through.</>;
+  else if (s === "failed") headline = transfers.length
+    ? <>We are sorry: your order could not be completed. Your payment has been refunded in full.</>
+    : <>We are sorry: your order could not be completed. Your card was not charged, and the hold on it has been released.</>;
   else if (s === "expired") headline = <>This checkout expired before payment, so nothing was charged. Your cart is still here if you want to try again.</>;
   else if (s === "payment_failed") headline = <>The payment did not go through, so nothing was charged. Your cart is still here if you want to try again.</>;
   else headline = <>We are checking your order by hand and will email you shortly. Nothing more is needed from you.</>;
@@ -140,7 +150,7 @@ export function DoneView() {
           {status.lines.map((l) => (
             <li key={l.domain} style={lineStyle}>
               <span style={domainStyle}>{l.domain}</span>
-              <LineBadge state={l.state} renew={l.service === "renew"} />
+              <LineBadge state={l.state} service={l.service} />
             </li>
           ))}
         </ul>
@@ -168,7 +178,14 @@ export function DoneView() {
   );
 }
 
-function LineBadge({ state, renew }: { state: LineState; renew: boolean }) {
+function LineBadge({ state, service }: { state: LineState; service: Service }) {
+  if (service === "transfer") {
+    if (state === "registered") return <Badge tone="success" emphasis="solid" icon textCase="sentence">Moved to us</Badge>;
+    if (state === "failed") return <Badge tone="error" icon textCase="sentence">Not moved, refunded</Badge>;
+    if (state === "awaiting_code") return <Badge tone="warning" textCase="sentence">Waiting for your transfer code</Badge>;
+    return <Badge tone="neutral" textCase="sentence">Moving to us</Badge>;
+  }
+  const renew = service === "renew";
   if (state === "registered") return <Badge tone="success" emphasis="solid" icon textCase="title">{renew ? "Renewed" : "Registered"}</Badge>;
   if (state === "failed") return <Badge tone="error" icon textCase="sentence">{renew ? "Not renewed, not charged" : "Not registered, not charged"}</Badge>;
   if (state === "pending") return <Badge tone="warning" textCase="sentence">Waiting for the registry</Badge>;

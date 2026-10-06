@@ -51,6 +51,9 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
     const type = CA_LEGAL_TYPES.find((t) => t.code === registrant.ca_legal_type);
     note(order, `.ca: the registrant qualifies as "${type?.label ?? registrant.ca_legal_type}" (${registrant.ca_legal_type}), and confirmed CIRA's requirements and registrant agreement.`);
   }
+  if (lines.some((l) => l.service === "transfer")) {
+    note(order, "Transfers are charged with the order and wait for the customer's code; one that never goes through is refunded.");
+  }
   await insertOrder(order);
 
   const r = await stripe("POST", "/checkout/sessions", {
@@ -78,7 +81,7 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
       price_data: {
         currency,
         unit_amount: l.amount_cents,
-        product_data: { name: `${l.domain}, ${l.service === "renew" ? "renewal" : "registration"} for ${l.term} ${l.term === 1 ? "year" : "years"}` },
+        product_data: { name: `${l.domain}, ${l.service === "renew" ? "renewal" : l.service === "transfer" ? "renewal by transfer to Corporate Domain Registry" : "registration"} for ${l.term} ${l.term === 1 ? "year" : "years"}` },
       },
     })),
   }, "cdr-checkout-" + id);
