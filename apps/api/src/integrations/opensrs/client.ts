@@ -202,7 +202,8 @@ export async function transfer(domain: string, authCode: string, registrant: Che
     link_domains: 0,
     contact_set: { owner: contact, admin: contact, billing: contact },
   };
-  // A .ca keeps its CIRA legal type.
+  // CIRA needs the legal type for a .ca transfer too (research/opensrs/tld.md, .CA).
+  if (domain.endsWith(".ca")) attrs.registrant_extra_info = { legal_type: registrant.ca_legal_type ?? "" };
   const extra: Record<string, OpsValue> = {};
   if (registrantIp && isIP(registrantIp)) extra.registrant_ip = registrantIp;
   return call("SW_REGISTER", attrs, "DOMAIN", 60, extra);

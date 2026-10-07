@@ -21,13 +21,13 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const RENEWAL_WINDOW_DAYS = 90;
 
-async function getState(key: string): Promise<Record<string, unknown>> {
+export async function getState(key: string): Promise<Record<string, unknown>> {
   const d = await db();
   const rows = await d.select().from(appState).where(sql`${appState.key} = ${key}`);
   return rows[0]?.value ?? {};
 }
 
-async function setState(key: string, value: Record<string, unknown>): Promise<void> {
+export async function setState(key: string, value: Record<string, unknown>): Promise<void> {
   const d = await db();
   await d.insert(appState).values({ key, value, updatedAt: new Date() })
     .onConflictDoUpdate({ target: appState.key, set: { value, updatedAt: new Date() } });
@@ -161,17 +161,7 @@ export async function reportData(c: Config, since: number, now: number): Promise
     group by o.id order by o.created_at
     limit 500`)).rows as Row[];
 
-  // The latest known expiry of each domain sold or renewed here.
-  const expiring = (await d.execute(sql`
-    select * from (
-      select distinct on (lower(l.domain)) l.domain, l.expires_at, o.email, o.id as order_id,
-        trim(concat_ws(' ', o.registrant->>'first_name', o.registrant->>'last_name')) as name
-      from order_lines l join orders o on o.id = l.order_id
-      where ${paid} and l.state = 'registered' and l.expires_at is not null
-      order by lower(l.domain), l.expires_at desc
-    ) latest
-    where latest.expires_at >= ${to} and latest.expires_at < ${new Date(now + RENEWAL_WINDOW_DAYS * DAY_MS)}
-    order by latest.expires_at`)).rows as Row[];
+  const expiring = await expiringBetween(c, to, new Date(now + RENEWAL_WINDOW_DAYS * DAY_MS));
 
   return {
     from: iso(since),
@@ -193,9 +183,33 @@ export async function reportData(c: Config, since: number, now: number): Promise
         expires_at: l.expires_at ? isoOf(l.expires_at) : null,
       })),
     })),
-    expiring: expiring.map((r) => ({ domain: String(r.domain), expires_at: isoOf(r.expires_at), name: String(r.name ?? ""), email: String(r.email ?? ""), order_id: String(r.order_id) })),
+    expiring: expiring.map((e) => ({ domain: e.domain, expires_at: e.expires_at, name: e.name, email: e.email, order_id: e.order_id })),
     renewal_window_days: RENEWAL_WINDOW_DAYS,
   };
+}
+
+export interface Expiring { domain: string; expires_at: string; name: string; first_name: string; email: string; order_id: string }
+
+/** The latest known expiry of each domain sold, renewed or moved here, when it falls in [from, to).
+ *  The contact is the order that set that expiry. */
+export async function expiringBetween(c: Config, from: Date, to: Date): Promise<Expiring[]> {
+  const d = await db();
+  const unpaid = sql.join(UNPAID.map((s) => sql`${s}`), sql`, `);
+  const rows = (await d.execute(sql`
+    select * from (
+      select distinct on (lower(l.domain)) l.domain, l.expires_at, o.email, o.id as order_id,
+        trim(concat_ws(' ', o.registrant->>'first_name', o.registrant->>'last_name')) as name,
+        coalesce(o.registrant->>'first_name', '') as first_name
+      from order_lines l join orders o on o.id = l.order_id
+      where o.test_mode = ${isTestMode(c)} and o.status not in (${unpaid}) and l.state = 'registered' and l.expires_at is not null
+      order by lower(l.domain), l.expires_at desc
+    ) latest
+    where latest.expires_at >= ${from} and latest.expires_at < ${to}
+    order by latest.expires_at`)).rows as Row[];
+  return rows.map((r) => ({
+    domain: String(r.domain), expires_at: isoOf(r.expires_at), name: String(r.name ?? ""), first_name: String(r.first_name ?? ""),
+    email: String(r.email ?? ""), order_id: String(r.order_id),
+  }));
 }
 
 /** The report email's text. */

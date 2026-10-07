@@ -1,7 +1,7 @@
 // POST /api/checkout/ — the registrant form and the cart in, a Stripe Checkout URL out.
 //
 // The page sends JSON: { items: [{domain, term, service}], registrant: {...}, agree, ca_agree }.
-// service is "register" (the default), "renew" or "transfer"; ca_agree comes with a .ca registration.
+// service is "register" (the default), "renew" or "transfer"; ca_agree comes with a .ca registration or transfer.
 //
 // Every line is priced here from the catalogue, in the visitor's currency: CAD in Canada, USD
 // everywhere else, decided from the same IP database as the header chip.
@@ -41,7 +41,7 @@ checkoutRouter.all(
     const currency = currencyForCountry(country);
     const cart = validateCart(input.items, currency, c.cadRate);
     const { registrant, errors } = validateRegistrant(input.registrant, input.agree);
-    if (cart.lines.some((l) => l.service === "register" && l.domain.endsWith(".ca"))) validateCa(registrant, input.registrant, input.ca_agree, errors);
+    if (cart.lines.some((l) => l.service !== "renew" && l.domain.endsWith(".ca"))) validateCa(registrant, input.registrant, input.ca_agree, errors);
     if (Object.keys(errors).length || Object.keys(cart.lineErrors).length) {
       throw new HttpError(422, "invalid", "Some details need attention.", { fields: errors, lines: cart.lineErrors });
     }
@@ -62,6 +62,11 @@ checkoutRouter.all(
             ? `This domain can be renewed for at most ${r.max_term} ${r.max_term === 1 ? "year" : "years"} now. Change the duration in your cart.`
             : "This domain is already renewed as far ahead as the registry allows.";
         } else {
+          // A .ca sent as a renewal turned out to be elsewhere: the CIRA details were never asked.
+          if (r.status === "transferable" && line.domain.endsWith(".ca") && !registrant.ca_legal_type) {
+            unavailable[at] = "This .ca domain is with another company, so it moves to us and we need the owner's .ca details. Remove it and add it again from the renewal page.";
+            continue;
+          }
           asService(line, r.status === "renewable" ? "renew" : "transfer");
           if (r.expires_at) line.expires_at = r.expires_at;
           if (r.status === "transferable" && r.registrar) line.transfer = { from_registrar: r.registrar };

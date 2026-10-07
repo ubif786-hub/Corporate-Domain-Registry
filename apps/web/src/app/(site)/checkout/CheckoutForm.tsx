@@ -65,7 +65,8 @@ export function CheckoutForm({
   const [errors, setErrors] = useState<Fields>({});
   const [lineErrors, setLineErrors] = useState<Fields>({});
   const [problem, setProblem] = useState<string | null>(null);
-  const hasCa = items.some((i) => i.service === "register" && i.domain.endsWith(".ca"));
+  // A .ca registration or transfer needs the CIRA details; a renewal of one already with us doesn't.
+  const hasCa = items.some((i) => i.service !== "renew" && i.domain.endsWith(".ca"));
   const [caType, setCaType] = useState("");
   const [caAgree, setCaAgree] = useState(false);
   const caOrg = CA_LEGAL_TYPES.find((t) => t.code === caType)?.org ?? false;

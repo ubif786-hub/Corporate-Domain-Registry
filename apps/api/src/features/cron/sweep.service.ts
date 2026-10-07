@@ -12,6 +12,7 @@ import { stripe } from "../../integrations/stripe/client";
 import { DRIVABLE, fulfil, recordCheckout, recordExpired } from "../orders/fulfilment.service";
 import { orderIdsWithStatus, readOrder } from "../orders/order.store";
 import { balanceNotice, reportNotice } from "../reports/reports.service";
+import { renewalReminders } from "../renew/renew.reminders";
 
 let running = false;
 
@@ -51,7 +52,7 @@ export async function sweep(budgetSeconds = 240): Promise<{ ran_at: string; repo
       }
     }
     // The notices never hold up the orders, and a failure in one is only logged.
-    for (const notice of [balanceNotice, reportNotice]) {
+    for (const notice of [balanceNotice, reportNotice, renewalReminders]) {
       try {
         const line = await notice(c);
         if (line) report.push(line);

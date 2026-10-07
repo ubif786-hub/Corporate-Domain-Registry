@@ -1,5 +1,5 @@
-// What the owner notices remember between runs and restarts: when the Tucows balance was last
-// checked and an alert sent, and when the next report is due. One row per notice.
+// What the notices remember between runs and restarts: when the Tucows balance was last checked
+// and an alert sent, when the next report is due, and each domain's renewal emails (renewal:<domain>).
 
 import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
