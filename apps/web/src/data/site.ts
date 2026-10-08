@@ -238,10 +238,9 @@ export const CONTACT = {
   email: "support@corporatedomainregistry.com",
   /** Privacy s.12. Privacy and data-rights requests only. */
   privacyEmail: "privacy@corporatedomainregistry.com",
-  /** Not in any of the six documents. Null until the client supplies one. */
-  phone: null as string | null,
-  /** Not in any of the six documents. No hours, no SLA, no response-time commitment anywhere. */
-  hours: null as string | null,
+  /** Iqbal, 8 Oct 2026: on the Contact page only, like bltz. */
+  phone: "1-855-513-6624" as string | null,
+  hours: "Monday to Friday, 9am to 5pm ET." as string | null,
 } as const;
 
 export interface CorporateAddress {

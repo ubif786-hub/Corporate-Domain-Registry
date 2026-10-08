@@ -116,9 +116,7 @@ export default function ContactPage() {
           ))}
         </dd>
 
-        {/* Null in every one of the six documents the client supplied, so the row is absent rather
-            than empty. The reference has one here; inventing ours is how a visitor ends up dialling
-            a number nobody answers. */}
+        {/* No row when there is no number. */}
         {CONTACT.phone ? (
           <>
             <dt style={labelStyle}>Phone</dt>
