@@ -8,6 +8,7 @@
 //                money and buyers since the last report, and the domains coming up for renewal.
 
 import { sql } from "drizzle-orm";
+import type { Currency } from "@cdr/shared";
 import { isTestMode, type Config } from "../../core/config";
 import { db } from "../../core/db";
 import { sendMail } from "../../core/mail";
@@ -188,7 +189,7 @@ export async function reportData(c: Config, since: number, now: number): Promise
   };
 }
 
-export interface Expiring { domain: string; expires_at: string; name: string; first_name: string; email: string; order_id: string }
+export interface Expiring { domain: string; expires_at: string; name: string; first_name: string; email: string; order_id: string; currency: Currency }
 
 /** The latest known expiry of each domain sold, renewed or moved here, when it falls in [from, to).
  *  The contact is the order that set that expiry. */
@@ -197,7 +198,7 @@ export async function expiringBetween(c: Config, from: Date, to: Date): Promise<
   const unpaid = sql.join(UNPAID.map((s) => sql`${s}`), sql`, `);
   const rows = (await d.execute(sql`
     select * from (
-      select distinct on (lower(l.domain)) l.domain, l.expires_at, o.email, o.id as order_id,
+      select distinct on (lower(l.domain)) l.domain, l.expires_at, o.email, o.id as order_id, o.currency,
         trim(concat_ws(' ', o.registrant->>'first_name', o.registrant->>'last_name')) as name,
         coalesce(o.registrant->>'first_name', '') as first_name
       from order_lines l join orders o on o.id = l.order_id
@@ -208,7 +209,7 @@ export async function expiringBetween(c: Config, from: Date, to: Date): Promise<
     order by latest.expires_at`)).rows as Row[];
   return rows.map((r) => ({
     domain: String(r.domain), expires_at: isoOf(r.expires_at), name: String(r.name ?? ""), first_name: String(r.first_name ?? ""),
-    email: String(r.email ?? ""), order_id: String(r.order_id),
+    email: String(r.email ?? ""), order_id: String(r.order_id), currency: r.currency === "cad" ? "cad" : "usd",
   }));
 }
 
