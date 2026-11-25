@@ -20,6 +20,9 @@
 //   GET    /api/admin/balance                 the Tucows balance, and the level that sends an alert
 //   GET    /api/admin/report                  ?days=7|30|90|365: the sales report (the same figures as the email)
 //   GET    /api/admin/report.csv              ?days= &list=buyers|renewals: the Analytics page's downloads
+//   GET    /api/admin/letters                 the mailings made so far, and the next reference number
+//   POST   /api/admin/letters                 { files: [{ name, text }], save }: preview, or create a mailing
+//   GET    /api/admin/letters/:id/files.zip   a mailing's ten files for Torpedo
 //   GET    /api/admin/team                    the people (owners also get the activity log)
 //   POST   /api/admin/team                    owner: add { name, email, role }, answers a setup link
 //   POST   /api/admin/team/:id/link           owner: a new setup link (first sign-in or reset)
@@ -38,6 +41,7 @@ import { countFailure, overLimit, rateLimited } from "../../core/rate-limit";
 import { visitorIp } from "../../core/visitor";
 import { balance } from "../../integrations/opensrs/client";
 import { reportData } from "../reports/reports.service";
+import { createMailing, listMailings, mailingZip, previewMailing, uploadedFiles } from "../letters/letters.service";
 import { DRIVABLE, fulfil } from "../orders/fulfilment.service";
 import { isValidOrderId, listOrders, ordersForExport, readOrder } from "../orders/order.store";
 import {
@@ -88,6 +92,19 @@ export const adminRouter = Router();
 adminRouter.get("/api/admin", (req, res) => {
   const id = str(req.query.order);
   res.redirect(308, isValidOrderId(id) ? "/admin/orders/view/?id=" + id : "/admin/");
+});
+
+// A letters upload carries whole WHOIS lists (a few MB), so it has its own body limit.
+adminRouter.post("/api/admin/letters", adminHeaders, express.json({ limit: "40mb" }), sameSiteWrites, requireAdmin, async (req, res) => {
+  const b = body(req);
+  const files = uploadedFiles(b.files);
+  if (b.save !== true) {
+    res.json(await previewMailing(files));
+    return;
+  }
+  const m = await createMailing(files, me(req).user.name);
+  await audit("mailing_created", me(req).user.id, ip(req), { mailing: m.id, first_ref: m.first_ref, last_ref: m.last_ref });
+  res.json({ mailing: m });
 });
 
 const api = Router();
@@ -247,6 +264,22 @@ api.get("/report.csv", async (req, res) => {
   res.set("Content-Type", "text/csv; charset=utf-8");
   res.set("Content-Disposition", `attachment; filename="cdr-${list === "renewals" ? "renewal-list" : `buyers-${days}-days`}-${new Date(now).toISOString().slice(0, 10)}.csv"`);
   res.send(reportCsv(report, list, config().siteUrl));
+});
+
+/* ---------- letters (Torpedo mailings) ---------- */
+
+api.get("/letters", async (_req, res) => {
+  res.json(await listMailings());
+});
+
+api.get("/letters/:id/files.zip", async (req, res) => {
+  const id = Number(req.params.id);
+  const zip = Number.isInteger(id) && id > 0 ? await mailingZip(id, config().siteUrl) : null;
+  if (!zip) throw new HttpError(404, "not_found", "No such mailing.");
+  await audit("mailing_downloaded", me(req).user.id, ip(req), { mailing: id });
+  res.set("Content-Type", "application/zip");
+  res.set("Content-Disposition", `attachment; filename="${zip.name}"`);
+  res.send(zip.data);
 });
 
 /* ---------- the team ---------- */

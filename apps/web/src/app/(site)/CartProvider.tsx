@@ -15,6 +15,8 @@ export interface CartItem {
   amount: number;
   /** Renewals: the most years the registry allows now (the API's renew-check). */
   maxTerm?: number;
+  /** The letter's reference number, when the buyer came from its QR code. */
+  ref?: string;
 }
 
 interface CartValue {

@@ -55,7 +55,9 @@ export function WhoisLookupFromUrl() {
 
 function RenewPanelInner() {
   const domain = useDomainParam();
-  return <RenewPanel key={domain} domain={domain} />;
+  // The letter's reference number, from its QR code link (/renew/?domain=&ref=000123).
+  const ref = useSearchParams().get("ref") ?? "";
+  return <RenewPanel key={domain} domain={domain} letterRef={/^\d{6}$/.test(ref) ? ref : ""} />;
 }
 
 export function RenewPanelFromUrl() {

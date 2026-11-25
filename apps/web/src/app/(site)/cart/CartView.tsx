@@ -139,7 +139,7 @@ export function CartView() {
       }))}
       onChange={(e) => {
         const term = Number(e.target.value) as Term;
-        cart.add({ domain: item.domain, service: item.service, term, amount: priceForTerm(term), maxTerm: item.maxTerm });
+        cart.add({ domain: item.domain, service: item.service, term, amount: priceForTerm(term), maxTerm: item.maxTerm, ref: item.ref });
       }}
     />
   );

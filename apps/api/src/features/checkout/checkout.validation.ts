@@ -47,6 +47,7 @@ export function validateCart(rawItems: unknown, currency: Currency, cadRate: num
     positions.push(i);
     const line: OrderLine = { domain, service, label: "", term, amount_cents: amount, state: "new", attempts: 0 };
     asService(line, service);
+    if (typeof item?.ref === "string" && /^\d{6}$/.test(item.ref)) line.letter_ref = item.ref;
     lines.push(line);
   });
   return { lines, positions, lineErrors };

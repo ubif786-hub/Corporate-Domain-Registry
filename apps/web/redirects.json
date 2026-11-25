@@ -23,5 +23,10 @@
     "source": "/pricing",
     "destination": "/search",
     "permanent": false
+  },
+  {
+    "source": "/paynow",
+    "destination": "/renew",
+    "permanent": false
   }
 ]

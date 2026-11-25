@@ -55,6 +55,8 @@ export const AUDIT_ACTION: Record<string, string> = {
   order_driven: "Ran an order's next step",
   csv_exported: "Downloaded the orders spreadsheet",
   report_exported: "Downloaded an analytics list",
+  mailing_created: "Made letter files for Torpedo",
+  mailing_downloaded: "Downloaded letter files",
   sessions_revoked: "Signed out other browsers",
   password_set: "Set a password from the server",
 };

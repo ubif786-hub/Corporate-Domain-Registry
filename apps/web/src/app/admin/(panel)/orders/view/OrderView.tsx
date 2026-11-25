@@ -132,6 +132,7 @@ function Domains({ o, codeDays }: { o: Order; codeDays?: number }) {
                 <span className="mono">{l.domain}</span>
                 {l.service === "renew" ? <span className="adm-cell-sub">Renewal</span> : null}
                 {l.service === "transfer" ? <span className="adm-cell-sub">Transfer from {l.transfer?.from_registrar ?? "another company"}</span> : null}
+                {l.letter_ref ? <span className="adm-cell-sub">From letter <span className="mono">{l.letter_ref}</span></span> : null}
               </td>
               <td className="nowrap">{years(l.term)}</td>
               <td className="num">{money(l.amount_cents, o.currency)}</td>

@@ -89,7 +89,7 @@ export function CheckoutForm({
     for (const k of ["first_name", "last_name", "org_name", "email", "phone", "address1", "address2", "city", "state", "postal_code", "country"]) registrant[k] = value(k);
     if (hasCa) registrant.ca_legal_type = caType;
     const body = {
-      items: items.map((i) => ({ domain: i.domain, term: i.term, service: i.service })),
+      items: items.map((i) => ({ domain: i.domain, term: i.term, service: i.service, ref: i.ref })),
       registrant,
       agree,
       ca_agree: hasCa ? caAgree : undefined,

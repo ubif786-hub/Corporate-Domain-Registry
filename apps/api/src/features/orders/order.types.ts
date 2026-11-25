@@ -51,6 +51,8 @@ export interface OrderLine {
     reg_username?: string;
   };
   transfer?: LineTransfer;
+  /** The reference number of the letter whose QR code brought the buyer (letters.lists.ts). */
+  letter_ref?: string;
 }
 
 export interface OrderStripe {

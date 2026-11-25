@@ -70,7 +70,7 @@ async function fetchRenewal(domain: string, signal: AbortSignal): Promise<Phase>
   }
 }
 
-export function RenewPanel({ domain }: { domain: string }) {
+export function RenewPanel({ domain, letterRef = "" }: { domain: string; letterRef?: string }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>(domain ? { kind: "checking", domain } : { kind: "idle" });
   const inFlight = useRef<AbortController | null>(null);
@@ -120,7 +120,7 @@ export function RenewPanel({ domain }: { domain: string }) {
               <div style={resultStyle} data-ds-renew={phase.check.status}>
                 <div style={resultHeadStyle}><Heading level={2} size={4}>{phase.check.domain}</Heading></div>
                 {phase.check.status === "renewable" || phase.check.status === "transferable" ? (
-                  <Renewal check={phase.check} expired={phase.expired} />
+                  <Renewal check={phase.check} expired={phase.expired} letterRef={phase.check.domain === domain ? letterRef : ""} />
                 ) : phase.check.status === "not_transferable" ? (
                   <p style={bodyStyle}>{phase.check.reason} If you have a question about it, email us at {email}.</p>
                 ) : phase.check.status === "not_registered" ? (
@@ -143,7 +143,7 @@ export function RenewPanel({ domain }: { domain: string }) {
   );
 }
 
-function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boolean }) {
+function Renewal({ check, expired, letterRef }: { check: RenewCheckResponse; expired: boolean; letterRef: string }) {
   const cart = useCart();
   const { region } = useRegion();
   const max = check.max_term ?? 0;
@@ -190,7 +190,7 @@ function Renewal({ check, expired }: { check: RenewCheckResponse; expired: boole
           {inCart ? (
             <Badge tone="success" emphasis="solid" icon textCase="title">Added To Cart</Badge>
           ) : (
-            <Button variant="primary" onClick={() => cart.add({ domain, service, term, amount: priceForTerm(term), maxTerm: max })}>
+            <Button variant="primary" onClick={() => cart.add({ domain, service, term, amount: priceForTerm(term), maxTerm: max, ref: letterRef || undefined })}>
               Add To Cart
             </Button>
           )}

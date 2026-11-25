@@ -47,6 +47,7 @@ export interface OrderLine {
     from_registrar?: string; last_error?: string; status?: string; asked_at?: string; reminded?: number;
     charged_cents?: number; refunded_cents?: number; refund_id?: string;
   };
+  letter_ref?: string;
 }
 
 export interface Order {
@@ -108,3 +109,9 @@ export interface SalesReport {
 export interface Balance { balance_usd: number | null; env: "test" | "live"; alert_below_usd: number }
 
 export interface SessionInfo { current: boolean; created_at: string; last_seen_at: string; ip: string | null; device: string }
+
+/** Letters for Torpedo (GET/POST /api/admin/letters). Per-file counts are letters, batch 1 first. */
+export interface MailingCounts { rows: number; dropped: Record<string, number>; CA: number[]; US: number[] }
+export interface MailingPreview { first_ref: number; last_ref: number; counts: MailingCounts }
+export interface MailingSummary extends MailingPreview { id: number; created_at: string; created_by: string; files: string[] }
+export interface Mailings { mailings: MailingSummary[]; next_ref: number }

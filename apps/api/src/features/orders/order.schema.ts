@@ -91,6 +91,8 @@ export const orderLines = pgTable("order_lines", {
   opensrsOrderId: text("opensrs_order_id"),
   /** A transfer's progress (order.types.ts LineTransfer); never the code. */
   transfer: jsonb("transfer").$type<LineTransfer>(),
+  /** The letter's six-digit reference number, when the buyer came from its QR code. */
+  letterRef: text("letter_ref"),
 }, (t) => [
   primaryKey({ columns: [t.orderId, t.position] }),
   check("order_lines_state_valid", sql`${t.state} in (${oneOf(LINE_STATES)})`),

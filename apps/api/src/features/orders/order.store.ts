@@ -102,6 +102,7 @@ function lineRows(o: Order): (typeof orderLines.$inferInsert)[] {
     opensrs: l.opensrs ?? null,
     opensrsOrderId: l.opensrs?.order_id ?? null,
     transfer: l.transfer ?? null,
+    letterRef: l.letter_ref ?? null,
   }));
 }
 
@@ -133,6 +134,7 @@ function lineFromRow(r: typeof orderLines.$inferSelect): OrderLine {
   if (r.reason) l.reason = r.reason;
   if (r.opensrs) l.opensrs = r.opensrs;
   if (r.transfer) l.transfer = r.transfer;
+  if (r.letterRef) l.letter_ref = r.letterRef;
   return l;
 }
 
