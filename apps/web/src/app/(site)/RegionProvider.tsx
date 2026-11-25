@@ -62,6 +62,21 @@ export interface GeoPlace {
 
 const RegionContext = createContext<RegionValue | null>(null);
 
+/** ?letters=000123:example.com,... from the page address and the cart's letter lines. */
+function letterQuery(): string {
+  const pairs = new Set<string>();
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const ref = q.get("ref") ?? "";
+    if (/^\d{6}$/.test(ref) && q.get("domain")) pairs.add(`${ref}:${q.get("domain")!.trim().toLowerCase()}`);
+    const cart: unknown = JSON.parse(localStorage.getItem("domain-services-cart") ?? "[]");
+    if (Array.isArray(cart)) for (const i of cart) if (typeof i?.ref === "string" && typeof i?.domain === "string") pairs.add(`${i.ref}:${i.domain}`);
+  } catch {
+    /* a blocked store: the visitor's location decides */
+  }
+  return pairs.size ? `?letters=${encodeURIComponent([...pairs].slice(0, 10).join(","))}` : "";
+}
+
 export function RegionProvider({ children }: { children: ReactNode }) {
   const [code, setCode] = useState<RegionCode>(DEFAULT_REGION);
   const [ready, setReady] = useState(false);
@@ -83,7 +98,8 @@ export function RegionProvider({ children }: { children: ReactNode }) {
     // chip pending forever: an unanswered geo is not an error the visitor can fix.
     // The API (apps/api) answers both forms; the slashed one is what nginx and the static export
     // use everywhere, so it is the one asked for.
-    fetch("/api/geo/", { cache: "no-store" })
+    // Visitors from a letter (its QR link, or a cart line from one) get the letter's country.
+    fetch(`/api/geo/${letterQuery()}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!live) return;

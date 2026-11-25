@@ -11,6 +11,7 @@
 // "transfer" items become a renewal if the domain is ours, a transfer otherwise.
 
 import express, { Router } from "express";
+import { letterCountry } from "../letters/letters.service";
 import { currencyForCountry, type CheckoutResponse } from "@cdr/shared";
 import { isTestMode, requireConfig } from "../../core/config";
 import { allow, HttpError, sendJson } from "../../core/http";
@@ -38,7 +39,10 @@ checkoutRouter.all(
     if (rateLimited("checkout", ip, 20, 600)) throw new HttpError(429, "too_many", "Too many attempts. Wait a few minutes and try again.");
 
     const country = await visitorCountry(req);
-    const currency = currencyForCountry(country);
+    // Lines from letters charge in the letters' currency, the same rule as /api/geo/ and renew-check.
+    const items: unknown[] = Array.isArray(input.items) ? input.items : [];
+    const fromLetter = await letterCountry(items.map((i) => ({ ref: (i as { ref?: unknown })?.ref, domain: (i as { domain?: unknown })?.domain })));
+    const currency = currencyForCountry(fromLetter ?? country);
     const cart = validateCart(input.items, currency, c.cadRate);
     const { registrant, errors } = validateRegistrant(input.registrant, input.agree);
     if (cart.lines.some((l) => l.service !== "renew" && l.domain.endsWith(".ca"))) validateCa(registrant, input.registrant, input.ca_agree, errors);

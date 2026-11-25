@@ -56,9 +56,9 @@ type Phase =
   | { kind: "done"; check: RenewCheckResponse; expired: boolean }
   | { kind: "failed"; domain: string; busy: boolean };
 
-async function fetchRenewal(domain: string, signal: AbortSignal): Promise<Phase> {
+async function fetchRenewal(domain: string, ref: string, signal: AbortSignal): Promise<Phase> {
   try {
-    const res = await fetch(`/api/renew-check/?domain=${encodeURIComponent(domain)}`, { cache: "no-store", signal });
+    const res = await fetch(`/api/renew-check/?domain=${encodeURIComponent(domain)}${ref ? `&ref=${ref}` : ""}`, { cache: "no-store", signal });
     if (res.status === 429) return { kind: "failed", domain, busy: true };
     if (!res.ok) return { kind: "failed", domain, busy: false };
     const check = (await res.json()) as RenewCheckResponse;
@@ -79,8 +79,8 @@ export function RenewPanel({ domain, letterRef = "" }: { domain: string; letterR
     inFlight.current?.abort();
     const ctl = new AbortController();
     inFlight.current = ctl;
-    fetchRenewal(d, ctl.signal).then((p) => { if (!ctl.signal.aborted) setPhase(p); }).catch(() => { /* a newer search */ });
-  }, []);
+    fetchRenewal(d, d === domain ? letterRef : "", ctl.signal).then((p) => { if (!ctl.signal.aborted) setPhase(p); }).catch(() => { /* a newer search */ });
+  }, [domain, letterRef]);
 
   function look(d: string) {
     setPhase({ kind: "checking", domain: d });

@@ -14,6 +14,7 @@ import { tryConfig } from "../../core/config";
 import { allow, sendJson } from "../../core/http";
 import { visitorIp } from "../../core/visitor";
 import { lookupIp } from "../../integrations/geoip/geoip";
+import { letterCountry } from "../letters/letters.service";
 
 const CA: Record<string, string> = { Alberta: "AB", "British Columbia": "BC", Manitoba: "MB", "New Brunswick": "NB", "Newfoundland and Labrador": "NL", "Northwest Territories": "NT", "Nova Scotia": "NS", Nunavut: "NU", Ontario: "ON", "Prince Edward Island": "PE", Quebec: "QC", "Québec": "QC", Saskatchewan: "SK", Yukon: "YT" };
 const US: Record<string, string> = { Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", California: "CA", Colorado: "CO", Connecticut: "CT", Delaware: "DE", "District of Columbia": "DC", Florida: "FL", Georgia: "GA", Hawaii: "HI", Idaho: "ID", Illinois: "IL", Indiana: "IN", Iowa: "IA", Kansas: "KS", Kentucky: "KY", Louisiana: "LA", Maine: "ME", Maryland: "MD", Massachusetts: "MA", Michigan: "MI", Minnesota: "MN", Mississippi: "MS", Missouri: "MO", Montana: "MT", Nebraska: "NE", Nevada: "NV", "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", Ohio: "OH", Oklahoma: "OK", Oregon: "OR", Pennsylvania: "PA", "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD", Tennessee: "TN", Texas: "TX", Utah: "UT", Vermont: "VT", Virginia: "VA", Washington: "WA", "West Virginia": "WV", Wisconsin: "WI", Wyoming: "WY" };
@@ -49,5 +50,9 @@ geoRouter.all("/api/geo", allow("GET"), async (req, res) => {
     const sub = rec.subdivisions?.[0];
     if (sub) out.region = sub.iso_code || regionCode(out.country, nameOf(sub));
   }
+  // ?letters=000123:example.com,...: a visitor from a letter gets the letter's country.
+  const letters = typeof req.query.letters === "string" ? req.query.letters.split(",").map((p) => ({ ref: p.split(":")[0], domain: p.split(":")[1] })) : [];
+  const fromLetter = await letterCountry(letters);
+  if (fromLetter) out.country = fromLetter;
   sendJson(res, 200, out);
 });

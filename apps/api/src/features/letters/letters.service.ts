@@ -2,6 +2,7 @@
 // page previews the counts first; creating the mailing takes the next reference numbers for good.
 
 import { desc, eq, getTableColumns, sql } from "drizzle-orm";
+import { normaliseDomain } from "@cdr/shared";
 import { db, type Db } from "../../core/db";
 import { HttpError } from "../../core/http";
 import { buildMailing, mailingFiles, zipFiles, type ListFile, type MailingCounts } from "./letters.lists";
@@ -78,4 +79,29 @@ export async function mailingZip(id: number, siteUrl: string): Promise<{ name: s
   const d = await db();
   const [m] = await d.select({ letters: mailings.letters }).from(mailings).where(eq(mailings.id, id));
   return m ? { name: `CDR-mailing-${id}.zip`, data: zipFiles(mailingFiles(id, m.letters, siteUrl)) } : null;
+}
+
+/** The country of the letters these refs were printed on, when every ref matches a letter for that
+ *  domain and they agree. Lets a letter decide the region and currency wherever its reader is. */
+export async function letterCountry(pairs: { ref: unknown; domain: unknown }[]): Promise<"CA" | "US" | null> {
+  const asked = pairs
+    .map((p) => ({ ref: typeof p.ref === "string" && /^\d{6}$/.test(p.ref) ? Number(p.ref) : 0, domain: normaliseDomain(p.domain) }))
+    .filter((p) => p.ref > 0 && p.domain)
+    .slice(0, 10);
+  if (!asked.length) return null;
+  try {
+    const d = await db();
+    const found = new Set<string>();
+    for (const p of asked) {
+      const r = await d.execute<{ country: string }>(sql`
+        select l->>'country' as country from ${mailings} m, jsonb_array_elements(m.letters) l
+        where ${p.ref} between m.first_ref and m.last_ref and (l->>'ref')::int = ${p.ref} and l->>'domain' = ${p.domain}
+        limit 1`);
+      if (r.rows[0]) found.add(r.rows[0].country);
+    }
+    return found.size === 1 ? ([...found][0] as "CA" | "US") : null;
+  } catch {
+    // No database: the visitor's own location decides, as before.
+    return null;
+  }
 }
