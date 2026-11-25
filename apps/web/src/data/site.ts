@@ -238,8 +238,8 @@ export const CONTACT = {
   email: "support@corporatedomainregistry.com",
   /** Privacy s.12. Privacy and data-rights requests only. */
   privacyEmail: "privacy@corporatedomainregistry.com",
-  /** Iqbal, 8 Oct 2026: on the Contact page only, like bltz. */
-  phone: "1-855-513-6624" as string | null,
+  /** Iqbal, 8 Oct 2026: on the Contact page only, like bltz. New number from Taqi, 30 Oct. */
+  phone: "1-855-363-6624" as string | null,
   hours: "Monday to Friday, 9am to 5pm ET." as string | null,
 } as const;
 
