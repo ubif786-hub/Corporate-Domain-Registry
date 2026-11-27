@@ -21,9 +21,11 @@ interface NewOrder {
   registrant: CheckoutRegistrant;
   ip: string | null;
   country: string | null;
+  /** The customer ticked "email me a reminder". */
+  reminders?: boolean;
 }
 
-export async function startCheckout({ config: c, currency, lines, registrant, ip, country }: NewOrder): Promise<{ url: string; order: string }> {
+export async function startCheckout({ config: c, currency, lines, registrant, ip, country, reminders }: NewOrder): Promise<{ url: string; order: string }> {
   const subtotal = lines.reduce((n, l) => n + l.amount_cents, 0);
   const id = newOrderId();
   const now = isoNow();
@@ -53,6 +55,10 @@ export async function startCheckout({ config: c, currency, lines, registrant, ip
   }
   if (lines.some((l) => l.service === "transfer")) {
     note(order, "Transfers are charged with the order and wait for the customer's code; one that never goes through is refunded.");
+  }
+  if (reminders) {
+    order.reminders_ok_at = now;
+    note(order, "The customer asked for reminder emails if they don't finish paying.");
   }
   await insertOrder(order);
 

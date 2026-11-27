@@ -17,3 +17,11 @@ export const mailings = pgTable("mailings", {
   counts: jsonb("counts").$type<MailingCounts>().notNull(),
   letters: jsonb("letters").$type<Letter[]>().notNull(),
 }, (t) => [check("mailings_refs_valid", sql`${t.firstRef} >= 1 and ${t.lastRef} >= ${t.firstRef}`)]);
+
+/** QR scans: visits to the renewal page from a letter's link, one row per letter. */
+export const letterScans = pgTable("letter_scans", {
+  ref: integer("ref").primaryKey(),
+  firstAt: timestamp("first_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  lastAt: timestamp("last_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  count: integer("count").notNull().default(1),
+});

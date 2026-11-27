@@ -97,4 +97,7 @@ export interface Order {
   log: string[];
   notified_final?: string;
   settled_early?: boolean;
+  /** When the customer asked for reminder emails if they don't finish paying. */
+  reminders_ok_at?: string;
+  reminders_sent?: number;
 }

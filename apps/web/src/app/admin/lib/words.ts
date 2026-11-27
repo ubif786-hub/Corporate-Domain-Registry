@@ -57,6 +57,9 @@ export const AUDIT_ACTION: Record<string, string> = {
   report_exported: "Downloaded an analytics list",
   mailing_created: "Made letter files for Torpedo",
   mailing_downloaded: "Downloaded letter files",
+  mailing_report_exported: "Downloaded a mailing's results",
+  reminders_changed: "Changed the reminder emails",
+  reminders_tested: "Sent a sample reminder email",
   sessions_revoked: "Signed out other browsers",
   password_set: "Set a password from the server",
 };

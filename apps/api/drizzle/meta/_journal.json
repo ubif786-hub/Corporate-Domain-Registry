@@ -36,6 +36,13 @@
       "when": 1795451314913,
       "tag": "0004_letters",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795791718875,
+      "tag": "0005_letter_tracking",
+      "breakpoints": true
     }
   ]
 }

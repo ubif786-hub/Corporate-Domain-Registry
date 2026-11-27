@@ -23,6 +23,11 @@
 //   GET    /api/admin/letters                 the mailings made so far, and the next reference number
 //   POST   /api/admin/letters                 { files: [{ name, text }], save }: preview, or create a mailing
 //   GET    /api/admin/letters/:id/files.zip   a mailing's ten files for Torpedo
+//   GET    /api/admin/letters/:id/report      each letter's status and the figures per country
+//   GET    /api/admin/letters/:id/report.csv  ?status= &country=: the letters for a spreadsheet
+//   GET    /api/admin/reminders               the reminder emails for unpaid checkouts: on or off, days, wording
+//   POST   /api/admin/reminders               { on, days, subject, body }
+//   POST   /api/admin/reminders/test          the same, sent to the signed-in person as a sample
 //   GET    /api/admin/team                    the people (owners also get the activity log)
 //   POST   /api/admin/team                    owner: add { name, email, role }, answers a setup link
 //   POST   /api/admin/team/:id/link           owner: a new setup link (first sign-in or reset)
@@ -42,6 +47,10 @@ import { visitorIp } from "../../core/visitor";
 import { balance } from "../../integrations/opensrs/client";
 import { reportData } from "../reports/reports.service";
 import { createMailing, listMailings, mailingZip, previewMailing, uploadedFiles } from "../letters/letters.service";
+import { LETTER_STATUSES, mailingReport, mailingReportCsv } from "../letters/letters.report";
+import { cleanSettings, DEFAULT_REMINDERS, reminderEmail, reminderSettings, saveSettings } from "../checkout/checkout.reminders";
+import { sendMail } from "../../core/mail";
+import type { Order } from "../orders/order.types";
 import { DRIVABLE, fulfil } from "../orders/fulfilment.service";
 import { isValidOrderId, listOrders, ordersForExport, readOrder } from "../orders/order.store";
 import {
@@ -280,6 +289,55 @@ api.get("/letters/:id/files.zip", async (req, res) => {
   res.set("Content-Type", "application/zip");
   res.set("Content-Disposition", `attachment; filename="${zip.name}"`);
   res.send(zip.data);
+});
+
+async function reportOf(req: Request) {
+  const id = Number(req.params.id);
+  const r = Number.isInteger(id) && id > 0 ? await mailingReport(id, isTestMode(config())) : null;
+  if (!r) throw new HttpError(404, "not_found", "No such mailing.");
+  return r;
+}
+
+api.get("/letters/:id/report", async (req, res) => {
+  res.json(await reportOf(req));
+});
+
+api.get("/letters/:id/report.csv", async (req, res) => {
+  const r = await reportOf(req);
+  const status = (LETTER_STATUSES as readonly string[]).includes(str(req.query.status)) ? str(req.query.status) : "";
+  const country = ["CA", "US"].includes(str(req.query.country)) ? str(req.query.country) : "";
+  await audit("mailing_report_exported", me(req).user.id, ip(req), { mailing: r.mailing.id, status, country });
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="cdr-mailing-${r.mailing.id}-letters${status ? "-" + status : ""}${country ? "-" + country : ""}.csv"`);
+  res.send(mailingReportCsv(r, status, country));
+});
+
+/* ---------- reminder emails for unpaid checkouts ---------- */
+
+api.get("/reminders", async (_req, res) => {
+  res.json({ settings: await reminderSettings(), defaults: DEFAULT_REMINDERS });
+});
+
+api.post("/reminders", async (req, res) => {
+  const s = cleanSettings(body(req));
+  await saveSettings(s);
+  await audit("reminders_changed", me(req).user.id, ip(req), { on: s.on, days: s.days });
+  res.json({ settings: s });
+});
+
+api.post("/reminders/test", async (req, res) => {
+  if (rateLimited("reminder-test", String(me(req).user.id), 5, 900)) throw new HttpError(429, "limited", "Too many test emails. Wait 15 minutes, then try again.");
+  const s = cleanSettings(body(req));
+  const { user } = me(req);
+  const sample = {
+    id: "20260101-0000000000",
+    registrant: { first_name: user.name.split(" ")[0] } as Order["registrant"],
+    lines: [{ domain: "example.com", service: "transfer", letter_ref: "000123" }] as Order["lines"],
+  };
+  const m = reminderEmail(config(), s, sample);
+  if (!(await sendMail(user.email, "[SAMPLE] " + m.subject, m.body))) throw new HttpError(502, "mail", "The test email could not be sent. Try again in a moment.");
+  await audit("reminders_tested", user.id, ip(req));
+  res.json({ sent_to: user.email });
 });
 
 /* ---------- the team ---------- */

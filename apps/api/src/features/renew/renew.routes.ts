@@ -12,7 +12,7 @@ import { allow, HttpError, sendJson } from "../../core/http";
 import { rateLimited } from "../../core/rate-limit";
 import { visitorCurrency, visitorIp } from "../../core/visitor";
 import { currencyForCountry } from "@cdr/shared";
-import { letterCountry } from "../letters/letters.service";
+import { letterCountry, recordScan } from "../letters/letters.service";
 import { checkRenewal } from "./renew.service";
 
 export const renewRouter = Router();
@@ -21,6 +21,8 @@ renewRouter.all("/api/renew-check", allow("GET"), async (req, res) => {
   const domain = normaliseDomain(typeof req.query.domain === "string" ? req.query.domain : "");
   // A letter's link (&ref=) prices in the letter's currency.
   const fromLetter = await letterCountry([{ ref: req.query.ref, domain }]);
+  // A match means someone opened this letter's link: count it for the mailing's report.
+  if (fromLetter) await recordScan(Number(req.query.ref));
   const currency = fromLetter ? currencyForCountry(fromLetter) : await visitorCurrency(req);
   const out: RenewCheckResponse = { domain, status: "invalid", currency: currency.toUpperCase() };
   if (!isValidDomain(domain)) return sendJson(res, 200, out);

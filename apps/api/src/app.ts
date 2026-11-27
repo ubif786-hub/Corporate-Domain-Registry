@@ -5,6 +5,7 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import { HttpError, noStore, sendJson } from "./core/http";
 import { adminRouter } from "./features/admin/admin.routes";
+import { remindersRouter } from "./features/checkout/checkout.reminders";
 import { checkoutRouter } from "./features/checkout/checkout.routes";
 import { cronRouter } from "./features/cron/cron.routes";
 import { domainCheckRouter } from "./features/domain-check/domain-check.routes";
@@ -27,6 +28,7 @@ export function createApp(options: { staticDir?: string } = {}) {
   app.use(renewRouter);
   app.use(whoisRouter);
   app.use(checkoutRouter);
+  app.use(remindersRouter);
   app.use(stripeWebhookRouter);
   app.use(orderStatusRouter);
   app.use(transferRouter);

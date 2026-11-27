@@ -55,6 +55,9 @@ export const orders = pgTable("orders", {
   stripeEvents: text("stripe_events").array().notNull().default(sql`'{}'::text[]`),
   notifiedFinal: ts("notified_final"),
   settledEarly: boolean("settled_early").notNull().default(false),
+  /** When the customer ticked "remind me" at checkout; cleared when they stop the reminders. */
+  reminderConsentAt: ts("reminder_consent_at"),
+  remindersSent: smallint("reminders_sent").notNull().default(0),
   createdAt: ts("created_at").notNull(),
   updatedAt: ts("updated_at").notNull(),
 }, (t) => [

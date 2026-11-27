@@ -60,6 +60,7 @@ export function CheckoutForm({
   const formRef = useRef<HTMLFormElement>(null);
   const { tax } = useRegion();
   const [agree, setAgree] = useState(false);
+  const [remind, setRemind] = useState(false);
   const [country, setCountry] = useState("");
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Fields>({});
@@ -93,6 +94,7 @@ export function CheckoutForm({
       registrant,
       agree,
       ca_agree: hasCa ? caAgree : undefined,
+      reminders: remind,
     };
     setBusy(true);
     setProblem(null);
@@ -242,6 +244,13 @@ export function CheckoutForm({
           />
         </FormGroup>
       ) : null}
+
+      <Checkbox
+        id="co-remind"
+        checked={remind}
+        onChange={setRemind}
+        label="Email me a reminder if I don't finish paying for this order. I can stop the reminders at any time."
+      />
 
       <Checkbox
         id="co-agree"

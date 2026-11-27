@@ -115,3 +115,18 @@ export interface MailingCounts { rows: number; dropped: Record<string, number>; 
 export interface MailingPreview { first_ref: number; last_ref: number; counts: MailingCounts }
 export interface MailingSummary extends MailingPreview { id: number; created_at: string; created_by: string; files: string[] }
 export interface Mailings { mailings: MailingSummary[]; next_ref: number }
+
+export type LetterStatus = "sent" | "scanned" | "checkout" | "refunded" | "paid" | "done";
+export interface LetterRow {
+  ref: number; country: "CA" | "US"; envelope: string; domain: string; expires: string;
+  name: string; company: string; street: string; city: string; state: string; postal: string;
+  status: LetterStatus; done_as?: "moved" | "renewed" | "registered";
+  scans: number; first_scan?: string; last_scan?: string;
+  order_id?: string; order_at?: string;
+  contact?: { name: string; email: string; phone: string; reminders: boolean };
+  revenue_cents: number; currency?: "usd" | "cad";
+}
+export interface Funnel { letters: number; scanned: number; checkout: number; paid: number; done: number; moved: number; renewed: number; refunded: number; revenue: MoneyByCurrency }
+export interface MailingReport { mailing: MailingSummary; countries: { CA: Funnel; US: Funnel }; letters: LetterRow[] }
+
+export interface ReminderSettings { on: boolean; days: number[]; subject: string; body: string }

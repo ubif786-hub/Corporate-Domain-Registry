@@ -20,8 +20,8 @@ const AFTER_DAYS = 90;
 // Spread out over the sweeps.
 const PER_PASS = 10;
 // ponytail: leaves room under Resend's free 100 a day for order emails; raise it with a paid plan.
-const PER_DAY = 50;
-const DAY_KEY = "reminders:day";
+export const PER_DAY = 50;
+export const DAY_KEY = "reminders:day";
 
 /** How many reminders are due by now for this expiry. */
 export function remindersDue(expiry: number, now: number): number {

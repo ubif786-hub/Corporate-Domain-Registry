@@ -4,7 +4,8 @@
 //   - orders whose capture failed (Stripe retried)
 //   - orders whose card hold is about to lapse (settled on day six)
 //   - checkouts whose webhook never arrived (the session is read from Stripe)
-// and then the owner's notices: the low Tucows balance alert and the sales report (reports/).
+// and then the notices: the low Tucows balance alert and the sales report (reports/), the renewal
+// emails and the reminders for unpaid checkouts.
 
 import { tryConfig } from "../../core/config";
 import { isoNow, toUnix, unixNow } from "../../core/time";
@@ -13,6 +14,7 @@ import { DRIVABLE, fulfil, recordCheckout, recordExpired } from "../orders/fulfi
 import { orderIdsWithStatus, readOrder } from "../orders/order.store";
 import { balanceNotice, reportNotice } from "../reports/reports.service";
 import { renewalReminders } from "../renew/renew.reminders";
+import { checkoutReminders } from "../checkout/checkout.reminders";
 
 let running = false;
 
@@ -52,7 +54,7 @@ export async function sweep(budgetSeconds = 240): Promise<{ ran_at: string; repo
       }
     }
     // The notices never hold up the orders, and a failure in one is only logged.
-    for (const notice of [balanceNotice, reportNotice, renewalReminders]) {
+    for (const notice of [balanceNotice, reportNotice, renewalReminders, checkoutReminders]) {
       try {
         const line = await notice(c);
         if (line) report.push(line);

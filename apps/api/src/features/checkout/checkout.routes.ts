@@ -1,7 +1,8 @@
 // POST /api/checkout/ — the registrant form and the cart in, a Stripe Checkout URL out.
 //
-// The page sends JSON: { items: [{domain, term, service}], registrant: {...}, agree, ca_agree }.
-// service is "register" (the default), "renew" or "transfer"; ca_agree comes with a .ca registration or transfer.
+// The page sends JSON: { items: [{domain, term, service, ref}], registrant: {...}, agree, ca_agree, reminders }.
+// service is "register" (the default), "renew" or "transfer"; ca_agree comes with a .ca registration or transfer;
+// reminders is the customer's yes to reminder emails if they don't finish paying (checkout.reminders.ts).
 //
 // Every line is priced here from the catalogue, in the visitor's currency: CAD in Canada, USD
 // everywhere else, decided from the same IP database as the header chip.
@@ -85,7 +86,7 @@ checkoutRouter.all(
       throw new HttpError(422, "unavailable", "A domain in your cart cannot be ordered.", { fields: {}, lines: unavailable });
     }
 
-    const out: CheckoutResponse = await startCheckout({ config: c, currency, lines: cart.lines, registrant, ip, country });
+    const out: CheckoutResponse = await startCheckout({ config: c, currency, lines: cart.lines, registrant, ip, country, reminders: input.reminders === true });
     sendJson(res, 200, out);
   },
 );

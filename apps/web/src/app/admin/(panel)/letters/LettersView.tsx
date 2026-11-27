@@ -1,11 +1,15 @@
 "use client";
 
-import { Fragment, useState, type ChangeEvent } from "react";
-import { Download } from "@carbon/icons-react";
+import { Fragment, useState, type ChangeEvent, type FormEvent } from "react";
+import Link from "next/link";
+import { ChartColumn, Download } from "@carbon/icons-react";
 import { Button } from "@/components/Button";
+import { Switch } from "@/components/Switch";
+import { Textarea } from "@/components/Textarea";
+import { TextField } from "@/components/TextField";
 import { api, ApiError, useApi } from "../../lib/api";
 import { day, plural } from "../../lib/format";
-import type { MailingCounts, MailingPreview, Mailings, MailingSummary } from "../../lib/types";
+import type { MailingCounts, MailingPreview, Mailings, MailingSummary, ReminderSettings } from "../../lib/types";
 import { Empty, ErrorNotice, PageHead, Panel, SkelRows } from "../../ui/bits";
 
 /* Letters: the list supplier's WHOIS lists turned into Torpedo's ten files (POST /api/admin/letters).
@@ -135,15 +139,76 @@ function History({ list }: { list: Mailings }) {
               </td>
               <td className="mono nowrap">{six(m.first_ref)} to {six(m.last_ref)}</td>
               <td className="nowrap">
-                <a className="adm-chip" href={zipLink(m.id)} download>
-                  <Download size={16} aria-hidden="true" /> Download files
-                </a>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                  <Link className="adm-chip" href={`/admin/letters/view/?id=${m.id}`}>
+                    <ChartColumn size={16} aria-hidden="true" /> Results
+                  </Link>
+                  <a className="adm-chip" href={zipLink(m.id)} download>
+                    <Download size={16} aria-hidden="true" /> Download files
+                  </a>
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/* The reminder emails for checkouts nobody paid for (GET/POST /api/admin/reminders). They only go
+   to customers who ticked "email me a reminder" at checkout. */
+function ReminderForm({ start }: { start: ReminderSettings }) {
+  const [on, setOn] = useState(start.on);
+  const [days, setDays] = useState(start.days.join(", "));
+  const [subject, setSubject] = useState(start.subject);
+  const [text, setText] = useState(start.body);
+  const [busy, setBusy] = useState<"" | "saving" | "testing">("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
+
+  async function send(path: string, kind: "saving" | "testing") {
+    setBusy(kind); setErrors({}); setResult(null);
+    try {
+      const r = await api<{ sent_to?: string }>(path, { method: "POST", body: { on, days, subject, body: text } });
+      setResult({ tone: "success", text: r.sent_to ? `A sample went to ${r.sent_to}.` : on ? "Saved. Reminders are on." : "Saved. Reminders are off." });
+    } catch (err) {
+      const e = err as ApiError;
+      if (e.field) setErrors({ [e.field]: e.message }); else setResult({ tone: "danger", text: e.message });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const save = (e: FormEvent) => { e.preventDefault(); void send("/reminders", "saving"); };
+
+  return (
+    <form className="adm-panel-body adm-form" onSubmit={save} noValidate style={{ maxWidth: "44rem" }}>
+      <Switch id="rem-on" label="Send reminder emails" checked={on} onChange={setOn}
+        helper="Only to customers who ticked “Email me a reminder” at checkout and didn’t pay. Each email ends with a link to stop them." />
+      <TextField id="rem-days" name="days" label="Days after the checkout" value={days} onChange={(e) => setDays(e.currentTarget.value)}
+        helper="One reminder for each number, for example 2, 7 sends one after 2 days and one after 7." error={errors.days} />
+      <TextField id="rem-subject" name="subject" label="Subject" value={subject} onChange={(e) => setSubject(e.currentTarget.value)} error={errors.subject} />
+      <Textarea id="rem-body" name="body" label="Message" rows={7} value={text} onChange={(e) => setText(e.currentTarget.value)} error={errors.body}
+        helper="{first_name} becomes the customer's first name and {domains} the domains in the order. A link to each domain and the stop link are added below your message." />
+      {result ? <p className="adm-notice" data-tone={result.tone} role={result.tone === "danger" ? "alert" : "status"}>{result.text}</p> : null}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)" }}>
+        <Button type="submit" variant="primary" disabled={busy !== ""}>{busy === "saving" ? "Saving…" : "Save"}</Button>
+        <Button type="button" variant="secondary" disabled={busy !== ""} onClick={() => send("/reminders/test", "testing")}>
+          {busy === "testing" ? "Sending…" : "Send me a sample"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function Reminders() {
+  const { data, error, loading, reload } = useApi<{ settings: ReminderSettings }>("/reminders");
+  return (
+    <Panel title="Reminder emails">
+      <ErrorNotice error={error} onRetry={reload} />
+      {data ? <ReminderForm start={data.settings} /> : loading ? <SkelRows rows={4} label="Loading the reminder emails" /> : null}
+    </Panel>
   );
 }
 
@@ -240,6 +305,8 @@ export function LettersView() {
         <ErrorNotice error={list.error} onRetry={list.reload} />
         {list.data ? <History list={list.data} /> : list.loading ? <SkelRows rows={3} label="Loading mailings" /> : null}
       </Panel>
+
+      <Reminders />
     </>
   );
 }

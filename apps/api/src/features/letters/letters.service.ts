@@ -6,7 +6,7 @@ import { normaliseDomain } from "@cdr/shared";
 import { db, type Db } from "../../core/db";
 import { HttpError } from "../../core/http";
 import { buildMailing, mailingFiles, zipFiles, type ListFile, type MailingCounts } from "./letters.lists";
-import { mailings } from "./letters.schema";
+import { letterScans, mailings } from "./letters.schema";
 
 export interface MailingSummary {
   id: number;
@@ -35,7 +35,7 @@ async function nextRef(d: Pick<Db, "select">): Promise<number> {
   return Number(r?.last ?? 0) + 1;
 }
 
-const summary = (m: Omit<typeof mailings.$inferSelect, "letters">): MailingSummary => ({
+export const summary = (m: Omit<typeof mailings.$inferSelect, "letters">): MailingSummary => ({
   id: m.id,
   created_at: m.createdAt.toISOString(),
   created_by: m.createdBy,
@@ -79,6 +79,17 @@ export async function mailingZip(id: number, siteUrl: string): Promise<{ name: s
   const d = await db();
   const [m] = await d.select({ letters: mailings.letters }).from(mailings).where(eq(mailings.id, id));
   return m ? { name: `CDR-mailing-${id}.zip`, data: zipFiles(mailingFiles(id, m.letters, siteUrl)) } : null;
+}
+
+/** One more visit from a letter's QR code. */
+export async function recordScan(ref: number): Promise<void> {
+  try {
+    const d = await db();
+    await d.insert(letterScans).values({ ref })
+      .onConflictDoUpdate({ target: letterScans.ref, set: { lastAt: new Date(), count: sql`${letterScans.count} + 1` } });
+  } catch {
+    // A lost count never stops the renewal page.
+  }
 }
 
 /** The country of the letters these refs were printed on, when every ref matches a letter for that

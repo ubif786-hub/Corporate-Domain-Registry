@@ -51,6 +51,11 @@ export function transferToken(id: string, position: number): string {
   return createHmac("sha256", orderSecret()).update(`transfer|${id}|${position}`).digest("hex").slice(0, 32);
 }
 
+/** Token for the "stop the reminders" link in a reminder email. */
+export function remindersToken(id: string): string {
+  return createHmac("sha256", orderSecret()).update(`reminders|${id}`).digest("hex").slice(0, 32);
+}
+
 /* ---------- rows <-> Order ---------- */
 
 const toDate = (s: string | null | undefined): Date | null => {
@@ -79,6 +84,8 @@ function orderRow(o: Order): typeof orders.$inferInsert {
     stripeEvents: o.events ?? [],
     notifiedFinal: toDate(o.notified_final),
     settledEarly: o.settled_early === true,
+    reminderConsentAt: toDate(o.reminders_ok_at),
+    remindersSent: o.reminders_sent ?? 0,
     createdAt: toDate(o.created_at) ?? now,
     updatedAt: toDate(o.updated_at) ?? now,
   };
@@ -159,6 +166,8 @@ function assemble(r: typeof orders.$inferSelect, lines: (typeof orderLines.$infe
   };
   if (r.notifiedFinal) o.notified_final = isoNow(r.notifiedFinal);
   if (r.settledEarly) o.settled_early = true;
+  if (r.reminderConsentAt) o.reminders_ok_at = isoNow(r.reminderConsentAt);
+  if (r.remindersSent) o.reminders_sent = r.remindersSent;
   return o;
 }
 
